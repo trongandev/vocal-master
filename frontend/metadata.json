@@ -1,0 +1,8 @@
+{
+  "name": "VocalMaster",
+  "description": "Ứng dụng học hát karaoke, luyện thanh và đánh giá giọng hát realtime.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": []
+}

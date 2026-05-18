@@ -1,0 +1,43 @@
+{
+  "entities": {
+    "VocalEvaluation": {
+      "title": "Vocal Evaluation",
+      "description": "Analysis result of a singing session by AI",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "targetNote": { "type": "string" },
+        "minNote": { "type": "string" },
+        "maxNote": { "type": "string" },
+        "vocalType": { "type": "string" },
+        "analysisResult": { "type": "string" },
+        "score": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "analysisResult", "createdAt"]
+    },
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "Extended user information",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "displayName": { "type": "string" },
+        "bestVocalType": { "type": "string" },
+        "bestVocalRange": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId"]
+    }
+  },
+  "firestore": {
+    "/vocalEvaluations/{evaluationId}": {
+      "schema": "VocalEvaluation",
+      "description": "Collection of vocal evaluation results"
+    },
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profile settings and stats"
+    }
+  }
+}
