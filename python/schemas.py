@@ -34,6 +34,17 @@ class ConvertResultResponse(BaseModel):
     notes_base64: str
 
 
+class CacheReferenceRequest(BaseModel):
+    metadata: dict[str, Any]
+    notes_base64: str = Field(min_length=1)
+
+
+class CacheReferenceResponse(BaseModel):
+    song_id: str
+    cached: bool
+    total_notes: int
+
+
 class YouTubeSearchResult(BaseModel):
     title: str
     url: str

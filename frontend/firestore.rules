@@ -33,6 +33,40 @@ service cloud.firestore {
           && (data.updatedAt == request.time);
     }
 
+    function isValidSong(data) {
+      return data.ownerId == request.auth.uid
+          && data.title is string
+          && data.title.size() > 0
+          && data.title.size() <= 200
+          && data.artist is string
+          && data.artist.size() <= 200
+          && data.sourceType == "youtube"
+          && data.sourceUrl is string
+          && data.sourceUrl.size() <= 1000
+          && data.pythonSongId is string
+          && data.pythonSongId.size() <= 128
+          && data.convertJobId is string
+          && data.convertJobId.size() <= 128
+          && data.metadata is map
+          && data.noteChunkCount is int
+          && data.noteChunkCount >= 1
+          && data.noteChunkCount <= 500
+          && data.noteFormat == "float32_triplets_base64_v1"
+          && data.status == "ready"
+          && data.createdAt == request.time
+          && data.updatedAt == request.time;
+    }
+
+    function isValidNoteChunk(songId, data) {
+      return data.ownerId == request.auth.uid
+          && data.songId == songId
+          && data.index is int
+          && data.index >= 0
+          && data.index < 500
+          && data.data is string
+          && data.data.size() <= 700000;
+    }
+
     // COLLECTIONS
     match /vocalEvaluations/{evaluationId} {
       allow get: if isSignedIn() && resource.data.userId == request.auth.uid;
@@ -44,6 +78,21 @@ service cloud.firestore {
     match /users/{userId} {
       allow get: if isOwner(userId);
       allow create, update: if isOwner(userId) && isValidUserProfile(request.resource.data);
+    }
+
+    match /songs/{songId} {
+      allow get, list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow create, update: if isSignedIn() && isValidId(songId) && isValidSong(request.resource.data);
+      allow delete: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+
+      match /noteChunks/{chunkId} {
+        allow get, list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+        allow create, update: if isSignedIn()
+          && isValidId(songId)
+          && isValidId(chunkId)
+          && isValidNoteChunk(songId, request.resource.data);
+        allow delete: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      }
     }
   }
 }

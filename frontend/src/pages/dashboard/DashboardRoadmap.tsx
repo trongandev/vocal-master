@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { MouseEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Target, Calendar, CheckCircle2, Circle, ChevronDown, Trophy, Wind, Activity, Heart, ArrowRight, PlayCircle } from 'lucide-react';
 import { Button } from '../../components/ui/button';
@@ -118,7 +119,7 @@ export default function DashboardRoadmap() {
     }
   };
 
-  const toggleWeekCompletion = (weekNum: number, e: React.MouseEvent) => {
+  const toggleWeekCompletion = (weekNum: number, e: MouseEvent) => {
     e.stopPropagation();
     if (completedWeeks.includes(weekNum)) {
       setCompletedWeeks(completedWeeks.filter(w => w !== weekNum));

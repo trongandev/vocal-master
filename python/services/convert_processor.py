@@ -79,6 +79,7 @@ def process_convert_job(job_id: str, url: str, song_id: str) -> None:
                 audio_path=downloaded.wav_path,
                 work_dir=work_dir,
                 duration=downloaded.duration or get_audio_duration(downloaded.wav_path, settings),
+                source_name=downloaded.title,
             )
 
         update("done", 100, "done")

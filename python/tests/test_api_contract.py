@@ -163,3 +163,28 @@ def test_convert_upload_cache_hit() -> None:
     assert body["status"] == "done"
     assert body["song_id"] == song_id
     assert body["events_url"].endswith(f"/convert/{body['job_id']}/events")
+
+
+def test_cache_reference_hydrates_song_for_scoring() -> None:
+    store.clear()
+    client = TestClient(app)
+    song_id = "persisted-song"
+    notes = notes_to_float32_bytes([NoteEvent(0.5, 64, 1.25), NoteEvent(2.0, 67, 0.75)])
+    metadata = {"duration": 4.0, "segments": [{"start": 0.5, "end": 2.75}]}
+
+    response = client.post(
+        f"/cache/{song_id}/reference",
+        json={
+            "metadata": metadata,
+            "notes_base64": base64.b64encode(notes).decode("ascii"),
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"song_id": song_id, "cached": True, "total_notes": 2}
+
+    cached = store.get_song(song_id)
+    assert cached is not None
+    assert cached.metadata["song_id"] == song_id
+    assert cached.metadata["total_notes"] == 2
+    assert cached.notes_bytes == notes
