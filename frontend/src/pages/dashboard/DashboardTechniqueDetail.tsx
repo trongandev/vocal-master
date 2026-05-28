@@ -222,13 +222,18 @@ export default function DashboardTechniqueDetail() {
     return <div>Kỹ thuật không tồn tại</div>;
   }
 
+  const techKeys = Object.keys(TECHNIQUE_DATA);
+  const currentIndex = techKeys.indexOf(techniqueId || 'pitch');
+  const prevId = currentIndex > 0 ? techKeys[currentIndex - 1] : null;
+  const nextId = currentIndex < techKeys.length - 1 ? techKeys[currentIndex + 1] : null;
+
   const Icon = data.icon;
 
   return (
     <div className="max-w-4xl mx-auto space-y-8 pb-16">
-      <Link to="/dashboard/techniques" className="inline-flex items-center text-slate-400 hover:text-white transition-colors">
+      <Link to="/dashboard/theory" className="inline-flex items-center text-slate-400 hover:text-white transition-colors">
         <ArrowLeft className="w-4 h-4 mr-2" />
-        Về danh sách kỹ thuật
+        Về Lý Thuyết & Kỹ Thuật
       </Link>
 
       <div className="flex items-center gap-4">
@@ -284,6 +289,30 @@ export default function DashboardTechniqueDetail() {
                </Link>
             </section>
          </div>
+      </div>
+      
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-8">
+         {prevId ? (
+           <Link to={`/dashboard/techniques/${prevId}`} className="w-full sm:w-auto">
+             <Button variant="outline" className="w-full sm:w-auto border-slate-700 text-white rounded-xl h-14 px-8 text-lg font-semibold hover:bg-slate-800">
+                <ArrowLeft className="w-5 h-5 mr-2" /> Kỹ thuật trước
+             </Button>
+           </Link>
+         ) : (
+           <Link to="/dashboard/theory/sheet" className="w-full sm:w-auto">
+             <Button variant="outline" className="w-full sm:w-auto border-slate-700 text-white rounded-xl h-14 px-8 text-lg font-semibold hover:bg-slate-800">
+                <ArrowLeft className="w-5 h-5 mr-2" /> Về Lý thuyết
+             </Button>
+           </Link>
+         )}
+         
+         {nextId ? (
+           <Link to={`/dashboard/techniques/${nextId}`} className="w-full sm:w-auto">
+             <Button className="w-full sm:w-auto bg-violet-600 hover:bg-violet-500 text-white rounded-xl h-14 px-8 text-lg font-semibold shadow-xl shadow-violet-600/20">
+                Hiểu kỹ thuật tiếp theo <ArrowLeft className="w-5 h-5 ml-2 rotate-180" />
+             </Button>
+           </Link>
+         ) : <div className="hidden sm:block" />}
       </div>
     </div>
   );

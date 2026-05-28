@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import PublicLayout from './layouts/PublicLayout';
 import DashboardLayout from './layouts/DashboardLayout';
 import Home from './pages/Home';
@@ -9,6 +9,7 @@ import Leaderboard from './pages/Leaderboard';
 
 // Dashboard Pages
 import DashboardHome from './pages/dashboard/DashboardHome';
+import DashboardFavorites from './pages/dashboard/DashboardFavorites';
 import DashboardUpload from './pages/dashboard/DashboardUpload';
 import DashboardSongEdit from './pages/dashboard/DashboardSongEdit';
 import DashboardCommunity from './pages/dashboard/DashboardCommunity';
@@ -23,6 +24,7 @@ import DashboardRoadmap from './pages/dashboard/DashboardRoadmap';
 import DashboardRoadmapDetail from './pages/dashboard/DashboardRoadmapDetail';
 import DashboardPronunciation from './pages/dashboard/DashboardPronunciation';
 import DashboardAIEvaluate from './pages/dashboard/DashboardAIEvaluate';
+import DashboardAdmin from './pages/dashboard/DashboardAdmin';
 
 // Fullscreen Pages
 import PlayScreen from './pages/play/PlayScreen';
@@ -53,6 +55,7 @@ export default function App() {
         {/* Phase 2: Authenticated Dashboard Routes */}
         <Route path="/dashboard" element={<DashboardLayout />}>
           <Route index element={<DashboardHome />} />
+          <Route path="favorites" element={<DashboardFavorites />} />
           <Route path="upload" element={<DashboardUpload />} />
           <Route path="song/:id/edit" element={<DashboardSongEdit />} />
           <Route path="community" element={<DashboardCommunity />} />
@@ -64,8 +67,9 @@ export default function App() {
           <Route path="settings" element={<DashboardSettings />} />
           <Route path="theory" element={<DashboardTheory />} />
           <Route path="theory/:theoryId" element={<DashboardTheoryDetail />} />
-          <Route path="techniques" element={<DashboardTechniques />} />
+          <Route path="techniques" element={<Navigate to="/dashboard/theory" replace />} />
           <Route path="techniques/:techniqueId" element={<DashboardTechniqueDetail />} />
+          <Route path="admin" element={<DashboardAdmin />} />
         </Route>
 
         {/* Fullscreen Authenticated Routes */}

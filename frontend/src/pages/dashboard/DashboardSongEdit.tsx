@@ -49,9 +49,9 @@ export default function DashboardSongEdit() {
           </div>
           <div className="space-y-2">
              <label className="text-sm font-semibold text-slate-300">Độ khó (Tự đánh giá)</label>
-             <select className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-violet-500 focus:outline-none appearance-none">
+             <select defaultValue="Medium" className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-violet-500 focus:outline-none appearance-none">
                 <option value="Easy">Dễ</option>
-                <option value="Medium" selected>Trung bình</option>
+                <option value="Medium">Trung bình</option>
                 <option value="Hard">Khó</option>
              </select>
           </div>

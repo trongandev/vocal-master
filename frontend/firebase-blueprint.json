@@ -28,6 +28,72 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["userId"]
+    },
+    "Song": {
+      "title": "Saved Karaoke Song",
+      "description": "A YouTube karaoke song converted by the Python server and saved by a user",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string" },
+        "title": { "type": "string" },
+        "artist": { "type": "string" },
+        "sourceType": { "type": "string" },
+        "sourceUrl": { "type": "string" },
+        "youtubeVideoId": { "type": "string" },
+        "thumbnail": { "type": "string" },
+        "duration": { "type": "number" },
+        "pythonSongId": { "type": "string" },
+        "convertJobId": { "type": "string" },
+        "metadata": { "type": "object" },
+        "genre": { "type": "string" },
+        "difficulty": { "type": "string" },
+        "plays": { "type": "number" },
+        "highestScore": { "type": "number" },
+        "noteChunkCount": { "type": "number" },
+        "noteFormat": { "type": "string" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "title", "sourceUrl", "pythonSongId", "noteChunkCount", "createdAt", "updatedAt"]
+    },
+    "SingingHistory": {
+      "title": "Singing History",
+      "description": "History of played songs and scores",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "songId": { "type": "string" },
+        "songTitle": { "type": "string" },
+        "songArtist": { "type": "string" },
+        "score": { "type": "number" },
+        "aiFeedback": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "songId", "score", "createdAt"]
+    },
+    "FavoriteSong": {
+      "title": "Favorite Song",
+      "description": "Mapping of a user to their favorite song",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "songId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "songId", "createdAt"]
+    },
+    "SongNoteChunk": {
+      "title": "Saved Karaoke Song Note Chunk",
+      "description": "Chunked base64 MIDI note payload for a saved karaoke song",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string" },
+        "songId": { "type": "string" },
+        "index": { "type": "number" },
+        "data": { "type": "string" }
+      },
+      "required": ["ownerId", "songId", "index", "data"]
     }
   },
   "firestore": {
@@ -38,6 +104,22 @@
     "/users/{userId}": {
       "schema": "UserProfile",
       "description": "User profile settings and stats"
+    },
+    "/songs/{songId}": {
+      "schema": "Song",
+      "description": "User-owned saved karaoke songs"
+    },
+    "/songs/{songId}/noteChunks/{chunkId}": {
+      "schema": "SongNoteChunk",
+      "description": "Chunked note payload for saved karaoke songs"
+    },
+    "/singingHistory/{historyId}": {
+      "schema": "SingingHistory",
+      "description": "User singing history"
+    },
+    "/favoriteSongs/{favoriteId}": {
+      "schema": "FavoriteSong",
+      "description": "Mapping of a user to their favorite song"
     }
   }
 }

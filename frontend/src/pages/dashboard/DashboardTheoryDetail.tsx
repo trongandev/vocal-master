@@ -230,13 +230,18 @@ export default function DashboardTheoryDetail() {
     return <div className="text-white text-center py-20">Bài học không tồn tại</div>;
   }
 
+  const theoryKeys = Object.keys(THEORY_DATA);
+  const currentIndex = theoryKeys.indexOf(theoryId || 'notes');
+  const prevId = currentIndex > 0 ? theoryKeys[currentIndex - 1] : null;
+  const nextId = currentIndex < theoryKeys.length - 1 ? theoryKeys[currentIndex + 1] : null;
+
   const Icon = data.icon;
 
   return (
     <div className="max-w-4xl mx-auto space-y-8 pb-16">
       <Link to="/dashboard/theory" className="inline-flex items-center text-slate-400 hover:text-white transition-colors">
         <ArrowLeft className="w-4 h-4 mr-2" />
-        Về Nhạc Lý Cơ Bản
+        Về Lý Thuyết & Kỹ Thuật
       </Link>
 
       <div className="flex items-center gap-4">
@@ -280,12 +285,28 @@ export default function DashboardTheoryDetail() {
          </section>
       </div>
       
-      <div className="text-center pt-8">
-         <Link to="/dashboard/roadmap">
-            <Button className="bg-violet-600 hover:bg-violet-500 text-white rounded-xl h-14 px-8 text-lg font-semibold shadow-xl shadow-violet-600/20">
-               Tiếp tục Hướng dẫn Thực hành <ArrowLeft className="w-5 h-5 ml-2 rotate-180" />
-            </Button>
-         </Link>
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-8">
+         {prevId ? (
+           <Link to={`/dashboard/theory/${prevId}`} className="w-full sm:w-auto">
+             <Button variant="outline" className="w-full sm:w-auto border-slate-700 text-white rounded-xl h-14 px-8 text-lg font-semibold hover:bg-slate-800">
+                <ArrowLeft className="w-5 h-5 mr-2" /> Bài trước
+             </Button>
+           </Link>
+         ) : <div className="hidden sm:block" />}
+         
+         {nextId ? (
+           <Link to={`/dashboard/theory/${nextId}`} className="w-full sm:w-auto">
+             <Button className="w-full sm:w-auto bg-violet-600 hover:bg-violet-500 text-white rounded-xl h-14 px-8 text-lg font-semibold shadow-xl shadow-violet-600/20">
+                Bài tiếp theo <ArrowLeft className="w-5 h-5 ml-2 rotate-180" />
+             </Button>
+           </Link>
+         ) : (
+           <Link to="/dashboard/techniques/pitch" className="w-full sm:w-auto">
+             <Button className="w-full sm:w-auto bg-orange-600 hover:bg-orange-500 text-white rounded-xl h-14 px-8 text-lg font-semibold shadow-xl shadow-orange-600/20">
+                Tiếp tục: Kỹ thuật Cao độ <ArrowLeft className="w-5 h-5 ml-2 rotate-180" />
+             </Button>
+           </Link>
+         )}
       </div>
     </div>
   );

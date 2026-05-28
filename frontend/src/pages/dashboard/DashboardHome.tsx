@@ -1,160 +1,339 @@
-import { useEffect, useState } from "react"
-import { Edit2, Globe, Loader2, Lock, Play, Plus, Trash2 } from "lucide-react"
-import { Link } from "react-router-dom"
-import { Button } from "../../components/ui/button"
-import { useAuth } from "../../contexts/AuthContext"
-import { deleteSong, listUserSongs, type SavedSong } from "../../lib/songStore"
-import { formatDuration } from "../../lib/karaokeApi"
+import { useState, useEffect } from 'react';
+import { Plus, Edit2, Play, Lock, Globe, Trash2, Music, Crown, Heart } from 'lucide-react';
+import { Button } from '../../components/ui/button';
+import { Link } from 'react-router-dom';
+import { db, auth } from '../../lib/firebase';
+import { collection, query, where, getDocs, orderBy, deleteDoc, doc, setDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 
-export default function DashboardHome() {
-    const { user } = useAuth()
-    const [songs, setSongs] = useState<SavedSong[]>([])
-    const [loading, setLoading] = useState(true)
-    const [deletingId, setDeletingId] = useState<string | null>(null)
-    const [error, setError] = useState("")
-
-    useEffect(() => {
-        if (!user) return
-
-        let active = true
-        setLoading(true)
-        listUserSongs(user.uid)
-            .then((items) => {
-                if (active) setSongs(items)
-            })
-            .catch((err) => {
-                if (active) setError(err instanceof Error ? err.message : String(err))
-            })
-            .finally(() => {
-                if (active) setLoading(false)
-            })
-
-        return () => {
-            active = false
-        }
-    }, [user])
-
-    async function handleDelete(songId: string) {
-        setDeletingId(songId)
-        setError("")
-        try {
-            if (!user) return
-            await deleteSong(songId, user.uid)
-            setSongs((current) => current.filter((song) => song.id !== songId))
-        } catch (err) {
-            setError(err instanceof Error ? err.message : String(err))
-        } finally {
-            setDeletingId(null)
-        }
-    }
-
-    return (
-        <div className="space-y-8">
-            <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
-                <div>
-                    <h1 className="mb-2 text-3xl font-bold text-white">Bai hat cua toi</h1>
-                    <p className="text-slate-400">Quan ly kho nhac ca nhan va cac bai hat da tach MIDI.</p>
-                </div>
-                <Link to="/dashboard/upload">
-                    <Button className="bg-violet-600 text-white hover:bg-violet-500">
-                        <Plus className="mr-1 h-5 w-5" />
-                        Them bai moi
-                    </Button>
-                </Link>
-            </div>
-
-            {error && <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">{error}</div>}
-
-            <div className="overflow-hidden rounded-3xl border border-slate-800 bg-slate-900 shadow-2xl">
-                <div className="overflow-x-auto">
-                    <table className="w-full whitespace-nowrap text-left text-sm">
-                        <thead className="bg-slate-800/50 font-medium text-slate-400">
-                            <tr>
-                                <th className="px-6 py-4">Ten bai hat / Ca si</th>
-                                <th className="px-6 py-4">Trang thai</th>
-                                <th className="px-6 py-4">Du lieu MIDI</th>
-                                <th className="px-6 py-4">Ngay them</th>
-                                <th className="px-6 py-4 text-right">Thao tac</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-800/50">
-                            {loading ? (
-                                <tr>
-                                    <td colSpan={5} className="px-6 py-12 text-center text-slate-500">
-                                        <Loader2 className="mx-auto mb-3 h-7 w-7 animate-spin text-violet-400" />
-                                        Dang tai thu vien...
-                                    </td>
-                                </tr>
-                            ) : (
-                                songs.map((song) => (
-                                    <tr key={song.id} className="transition-colors hover:bg-slate-800/20">
-                                        <td className="px-6 py-4">
-                                            <div className="flex items-center gap-3">
-                                                <div className="h-12 w-16 overflow-hidden rounded-lg bg-slate-800">
-                                                    {song.thumbnail ? <img src={song.thumbnail} alt={song.title} className="h-full w-full object-cover" /> : null}
-                                                </div>
-                                                <div className="min-w-0">
-                                                    <div className="max-w-sm truncate font-semibold text-slate-200">{song.title}</div>
-                                                    <div className="text-xs text-slate-500">{song.artist}</div>
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <div className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-400">
-                                                <Lock className="h-3.5 w-3.5" />
-                                                Private
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4 text-slate-400">
-                                            <div className="flex flex-col gap-1">
-                                                <span>{Number(song.metadata.total_notes || 0).toLocaleString("en-US")} notes</span>
-                                                <span className="text-xs text-slate-600">{formatDuration(song.duration)} - {song.noteChunkCount} chunks</span>
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4 text-slate-500">{formatDate(song.createdAt)}</td>
-                                        <td className="px-6 py-4 text-right">
-                                            <div className="flex items-center justify-end gap-2">
-                                                <Link to={`/play/${song.id}`}>
-                                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 transition-colors hover:bg-green-400/10 hover:text-green-400" title="Hat ngay">
-                                                        <Play className="h-4 w-4" />
-                                                    </Button>
-                                                </Link>
-                                                <Link to={`/dashboard/song/${song.id}/edit`}>
-                                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 transition-colors hover:bg-blue-400/10 hover:text-blue-400" title="Chinh sua">
-                                                        <Edit2 className="h-4 w-4" />
-                                                    </Button>
-                                                </Link>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    disabled={deletingId === song.id}
-                                                    onClick={() => void handleDelete(song.id)}
-                                                    className="h-8 w-8 text-slate-400 transition-colors hover:bg-red-400/10 hover:text-red-400"
-                                                    title="Xoa"
-                                                >
-                                                    {deletingId === song.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                                                </Button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))
-                            )}
-                        </tbody>
-                    </table>
-
-                    {!loading && songs.length === 0 && (
-                        <div className="p-10 text-center text-slate-500">
-                            <Globe className="mx-auto mb-4 h-10 w-10 text-slate-700" />
-                            Ban chua co bai hat nao. Hay them bai moi de bat dau luyen tap.
-                        </div>
-                    )}
-                </div>
-            </div>
-        </div>
-    )
+interface Song {
+  id: string;
+  title: string;
+  artist: string;
+  thumbnail: string;
+  status: string;
+  createdAt: any;
+  duration?: number;
 }
 
-function formatDate(timestamp: SavedSong["createdAt"]) {
-    if (!timestamp) return "--"
-    return timestamp.toDate().toLocaleDateString("vi-VN")
+export default function DashboardHome() {
+  const [mySongs, setMySongs] = useState<Song[]>([]);
+  const [favorites, setFavorites] = useState<Set<string>>(new Set());
+  const [isLoading, setIsLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [showVipModal, setShowVipModal] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 9;
+
+  useEffect(() => {
+    const fetchSongs = async (uid: string) => {
+      try {
+        const q = query(
+          collection(db, 'songs'),
+          where('ownerId', '==', uid)
+        );
+        const querySnapshot = await getDocs(q);
+        const songsList: Song[] = [];
+        querySnapshot.forEach((doc) => {
+          const data = doc.data();
+          songsList.push({
+            id: doc.id,
+            title: data.title || 'Unknown Title',
+            artist: data.artist || 'Unknown Artist',
+            thumbnail: data.thumbnail,
+            status: data.status,
+            createdAt: data.createdAt,
+            duration: data.duration
+          });
+        });
+        
+        // Sort in client side to avoid requiring a composite index right away if created doesn't have it
+        songsList.sort((a, b) => {
+           const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
+           const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
+           return timeB - timeA;
+        });
+        
+        setMySongs(songsList);
+      } catch (error) {
+        console.error("Error fetching songs:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      if (user) {
+        fetchSongs(user.uid);
+      } else {
+        setMySongs([]);
+        setIsLoading(false);
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!auth.currentUser) return;
+    const q = query(collection(db, 'favoriteSongs'), where('userId', '==', auth.currentUser.uid));
+    const unsubscribe = onSnapshot(q, (snap) => {
+      const favSet = new Set<string>();
+      snap.docs.forEach(doc => favSet.add(doc.data().songId));
+      setFavorites(favSet);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const toggleFavorite = async (songId: string, e: any) => {
+     e.preventDefault();
+     e.stopPropagation();
+     if (!auth.currentUser) return;
+     
+     const q = query(collection(db, 'favoriteSongs'), where('userId', '==', auth.currentUser.uid), where('songId', '==', songId));
+     const snap = await getDocs(q);
+     
+     if (!snap.empty) {
+        await deleteDoc(doc(db, 'favoriteSongs', snap.docs[0].id));
+     } else {
+        await setDoc(doc(collection(db, 'favoriteSongs')), {
+           userId: auth.currentUser.uid,
+           songId: songId,
+           createdAt: serverTimestamp()
+        });
+     }
+  };
+
+  const formatDate = (timestamp: any) => {
+    if (!timestamp || !timestamp.toDate) return '--/--/----';
+    const date = timestamp.toDate();
+    return date.toLocaleDateString('vi-VN');
+  };
+
+  const executeDelete = async () => {
+    if (!deletingId) return;
+    try {
+      await deleteDoc(doc(db, 'songs', deletingId));
+      setMySongs(prev => prev.filter(song => song.id !== deletingId));
+    } catch (error) {
+      console.error("Lỗi xóa bài hát:", error);
+      alert("Có lỗi xảy ra khi xóa bài hát");
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const toggleStatus = async (songId: string, currentStatus: string) => {
+    if (currentStatus === 'public') {
+      // User is trying to switch public -> private
+      // In a real app we would check user's VIP status here
+      setShowVipModal(true);
+      return;
+    }
+
+    try {
+      await setDoc(doc(db, 'songs', songId), { status: 'public' }, { merge: true });
+      setMySongs(prev => prev.map(s => s.id === songId ? { ...s, status: 'public' } : s));
+    } catch (error) {
+      console.error("Lỗi cập nhật trạng thái:", error);
+    }
+  };
+
+  const totalPages = Math.ceil(mySongs.length / itemsPerPage);
+  const currentItems = mySongs.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+  return (
+    <div className="space-y-8 pb-16">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-white mb-2">Bài hát của tôi</h1>
+          <p className="text-slate-400">Quản lý kho nhạc cá nhân và các bài hát tự tải lên.</p>
+        </div>
+        <Link to="/dashboard/upload">
+          <Button className="bg-violet-600 hover:bg-violet-500 text-white">
+            <Plus className="w-5 h-5 mr-1" />
+            Tải lên bài mới
+          </Button>
+        </Link>
+      </div>
+
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl">
+        <div className="overflow-x-auto min-h-[300px]">
+          {isLoading ? (
+            <div className="flex items-center justify-center p-12">
+              <div className="animate-spin w-8 h-8 border-4 border-violet-500 border-t-transparent rounded-full" />
+            </div>
+          ) : mySongs.length === 0 ? (
+            <div className="p-16 text-center flex flex-col items-center justify-center">
+               <div className="w-20 h-20 bg-slate-800 rounded-full flex items-center justify-center mb-4 text-slate-500">
+                  <Music className="w-10 h-10" />
+               </div>
+               <h3 className="text-xl font-bold text-white mb-2">Chưa có bài hát nào</h3>
+               <p className="text-slate-400 mb-6 max-w-md">Bạn chưa tải bài hát nào lên hệ thống. Hãy tìm kiếm trên YouTube và phân tích một bài hát karaoke để bắt đầu luyện tập.</p>
+               <Link to="/dashboard/upload">
+                 <Button className="bg-violet-600 hover:bg-violet-500 text-white">
+                    Tải lên ngay
+                 </Button>
+               </Link>
+            </div>
+          ) : (
+            <table className="w-full text-left text-sm whitespace-nowrap">
+              <thead className="bg-slate-800/50 text-slate-400 font-medium">
+                <tr>
+                  <th className="px-6 py-4">Bài hát</th>
+                  <th className="px-6 py-4">Trạng thái</th>
+                  <th className="px-6 py-4">Kỷ lục cá nhân</th>
+                  <th className="px-6 py-4">Ngày thêm</th>
+                  <th className="px-6 py-4 text-right">Thao tác</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/50">
+                {currentItems.map((song) => (
+                  <tr key={song.id} className="hover:bg-slate-800/20 transition-colors group">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-4">
+                        <div className="w-16 h-10 bg-slate-800 rounded-md overflow-hidden relative">
+                           {song.thumbnail ? (
+                              <img src={song.thumbnail} alt={song.title} className="w-full h-full object-cover" />
+                           ) : (
+                              <div className="w-full h-full flex items-center justify-center">
+                                <Music className="w-4 h-4 text-slate-500" />
+                              </div>
+                           )}
+                           <div className="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-colors" />
+                        </div>
+                        <div>
+                          <div className="font-semibold text-slate-200 max-w-[200px] sm:max-w-[250px] truncate flex items-center gap-2" title={song.title}>
+                             {song.title}
+                             <button
+                               onClick={(e) => toggleFavorite(song.id, e)}
+                               className="text-slate-500 hover:text-rose-500 transition-colors"
+                             >
+                               <Heart className={`w-4 h-4 ${favorites.has(song.id) ? 'fill-rose-500 text-rose-500' : ''}`} />
+                             </button>
+                          </div>
+                          <div className="text-xs text-slate-500 max-w-[250px] truncate">{song.artist}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <button onClick={() => toggleStatus(song.id, song.status)} className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition-colors hover:brightness-125 cursor-pointer ${
+                        song.status === 'public' 
+                          ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' 
+                          : 'bg-slate-800 text-slate-400 border border-slate-700'
+                      }`}>
+                        {song.status === 'public' ? <Globe className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
+                        {song.status === 'public' ? 'Công khai' : 'Riêng tư'}
+                      </button>
+                    </td>
+                    <td className="px-6 py-4 font-mono text-slate-300">
+                      --
+                    </td>
+                    <td className="px-6 py-4 text-slate-500">
+                      {formatDate(song.createdAt)}
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <Link to={`/play/${song.id}`}>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-green-400 hover:bg-green-400/10 transition-colors tooltip-target" title="Hát ngay">
+                            <Play className="w-4 h-4" />
+                          </Button>
+                        </Link>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-red-400 hover:bg-red-400/10 transition-colors" title="Xoá" onClick={() => setDeletingId(song.id)}>
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+        
+        {totalPages > 1 && (
+          <div className="flex flex-col sm:flex-row items-center justify-between px-6 py-4 border-t border-slate-800 gap-4">
+             <div className="text-sm text-slate-400">
+                Hiển thị <span className="font-medium text-white">{((currentPage - 1) * itemsPerPage) + 1}</span> đến <span className="font-medium text-white">{Math.min(currentPage * itemsPerPage, mySongs.length)}</span> trong <span className="font-medium text-white">{mySongs.length}</span> bài hát
+             </div>
+             <div className="flex items-center gap-2">
+                <Button 
+                   variant="outline" 
+                   size="sm" 
+                   onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                   disabled={currentPage === 1}
+                   className="h-8 px-3 border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white disabled:opacity-50"
+                >
+                   Trước
+                </Button>
+                <div className="flex items-center gap-1">
+                   {Array.from({ length: totalPages }).map((_, i) => {
+                      const pageNum = i + 1;
+                      if (pageNum === 1 || pageNum === totalPages || Math.abs(pageNum - currentPage) <= 1) {
+                         return (
+                            <button
+                               key={i}
+                               onClick={() => setCurrentPage(pageNum)}
+                               className={`w-8 h-8 rounded-md text-sm font-medium transition-colors ${
+                                  currentPage === pageNum 
+                                     ? 'bg-violet-600 text-white' 
+                                     : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+                               }`}
+                            >
+                               {pageNum}
+                            </button>
+                         );
+                      } else if (pageNum === currentPage - 2 || pageNum === currentPage + 2) {
+                         return <span key={`ellipsis-${pageNum}`} className="text-slate-500 w-6 text-center">...</span>;
+                      }
+                      return null;
+                   })}
+                </div>
+                <Button 
+                   variant="outline" 
+                   size="sm" 
+                   onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                   disabled={currentPage === totalPages}
+                   className="h-8 px-3 border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white disabled:opacity-50"
+                >
+                   Tiếp
+                </Button>
+             </div>
+          </div>
+        )}
+      </div>
+
+      {deletingId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-slate-700/50 rounded-3xl p-6 shadow-2xl max-w-sm w-full relative overflow-hidden animate-in fade-in zoom-in duration-200">
+             <h3 className="font-bold text-lg text-white mb-2">Xác nhận xóa</h3>
+             <p className="text-sm text-slate-400 mb-6">Bạn có chắc chắn muốn xóa bài hát này khỏi thư viện?</p>
+             <div className="flex gap-3">
+                <Button variant="outline" className="flex-1 bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-300" onClick={() => setDeletingId(null)}>Hủy</Button>
+                <Button className="flex-1 bg-red-600 hover:bg-red-500 text-white" onClick={executeDelete}>Xóa bài hát</Button>
+             </div>
+          </div>
+        </div>
+      )}
+
+      {showVipModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-violet-500/30 rounded-3xl p-8 shadow-2xl max-w-sm w-full relative overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col items-center text-center">
+             <div className="w-16 h-16 rounded-full bg-amber-500/20 text-amber-500 flex items-center justify-center mb-4">
+                <Crown className="w-8 h-8" />
+             </div>
+             <h3 className="font-bold text-xl text-white mb-2">Nâng cấp VIP</h3>
+             <p className="text-sm text-slate-400 mb-6">Tính năng chuyển bài hát sang trạng thái <strong className="text-slate-200">Riêng tư</strong> chỉ dành cho tài khoản VIP. Nâng cấp ngay để bảo vệ bài hát của bạn!</p>
+             <div className="flex flex-col gap-3 w-full">
+                <Button className="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-bold" onClick={() => setShowVipModal(false)}>
+                   Nâng cấp ngay
+                </Button>
+                <Button variant="ghost" className="w-full text-slate-400 hover:text-white" onClick={() => setShowVipModal(false)}>
+                   Để sau
+                </Button>
+             </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }

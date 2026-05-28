@@ -1,12 +1,43 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Mic, Square, PlayCircle, RefreshCw, Volume2, CheckCircle2, AlertTriangle, XCircle, FileAudio, AudioLines, Info } from 'lucide-react';
+import { Mic, Square, PlayCircle, RefreshCw, Volume2, CheckCircle2, AlertTriangle, XCircle, FileAudio, AudioLines, Info, Lock, Crown } from 'lucide-react';
 import { Button } from '../../components/ui/button';
+import { GoogleGenAI } from "@google/genai";
+import { auth, db } from '../../lib/firebase';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { UpgradeModal } from '../../components/UpgradeModal';
+
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 const EXERCISES = [
   {
     id: 1,
-    title: "Luyện Mở Khẩu Hình Dọc (Nguyên âm A, O)",
+    title: "1. Khởi động: Rung Môi (Lip Trill)",
+    phrase: "Brrrrr - Rung môi theo âm giai",
+    words: [
+      { text: "Brrr", status: "good" },
+      { text: "rrr", status: "good" },
+      { text: "rrr", status: "warning", issue: "Bị đứt hơi giữa chừng." },
+      { text: "rrr", status: "bad", issue: "Môi bị căng cứng, mất độ nảy." }
+    ],
+    score: 85,
+    tip: "Rung môi (Lip trill) giúp thả lỏng thanh quản và dây thanh âm. Hãy giữ hơi bụng thật đều, đặt tay nhẹ lên hai má nếu bạn thấy khó rung."
+  },
+  {
+    id: 2,
+    title: "2. Khởi động: Bật hơi (Hissing)",
+    phrase: "Sss sss sss - Sss sss sss",
+    words: [
+      { text: "Sss", status: "good" },
+      { text: "sss", status: "good" },
+      { text: "sss", status: "good" }
+    ],
+    score: 95,
+    tip: "Tập xì hơi (Hissing) như con rắn. Đặt tay lên bụng để cảm nhận cơ hoành giật vào mỗi lần phát âm 'Sss'. Bài tập này gia cố lực đẩy hơi."
+  },
+  {
+    id: 3,
+    title: "3. Mở Khẩu Hình Dọc (Nguyên âm A, O)",
     phrase: "Hoà vào làn mây trôi nát tan trong chiều",
     words: [
       { text: "Hoà", status: "good" },
@@ -20,11 +51,11 @@ const EXERCISES = [
       { text: "chiều", status: "good" }
     ],
     score: 78,
-    tip: "Khi hát các từ có nguyên âm 'A' (như 'tan'), hãy hạ hàm dưới xuống thả lỏng thay vì kéo khóe miệng sang hai bên (cười). Điều này giúp âm vang và không bị chua."
+    tip: "Khi hát các từ có nguyên âm 'A' (như 'tan'), hãy hạ hàm dưới xuống thả lỏng thay vì kéo khóe miệng sang hai bên (cười). Điều này giúp âm vang và không bị 'chua'."
   },
   {
-    id: 2,
-    title: "Phát âm rõ Phụ Âm Đầu (L/N & Tr/Ch)",
+    id: 4,
+    title: "4. Phát âm Phụ Âm Đầu (L/N & Tr/Ch)",
     phrase: "Lòng não nề nhìn trời trong mây trắng",
     words: [
       { text: "Lòng", status: "good" },
@@ -37,34 +68,33 @@ const EXERCISES = [
       { text: "trắng", status: "good" }
     ],
     score: 65,
-    tip: "Phụ âm giúp từ ngữ rành mạch. Nếu bạn hát yếu phụ âm đầu, bài hát sẽ bị 'sương mù' và người nghe không hiểu lời. Hãy tập bật mạnh hơi ở các phụ âm bật."
-  },
-  {
-    id: 3,
-    title: "Đóng nốt và Nhả chữ (Nguyên âm i, e)",
-    phrase: "Nhìn hạt mưa rơi rớt bên thềm vắng",
-    words: [
-      { text: "Nhìn", status: "good" },
-      { text: "hạt", status: "good" },
-      { text: "mưa", status: "good" },
-      { text: "rơi", status: "good" },
-      { text: "rớt", status: "warning", issue: "Chữ bị nuốt, chưa rõ phụ âm cuối 't'." },
-      { text: "bên", status: "good" },
-      { text: "thềm", status: "warning", issue: "Âm 'e' bị nghẹt ở mũi." },
-      { text: "vắng", status: "good" }
-    ],
-    score: 82,
-    tip: "Để hát rõ các từ có âm cuối như 't', 'p', 'c', bạn cần có thao tác đóng khẩu hình nhẹ nhàng ở cuối nốt nhạc nhưng không được tắt hẳn luồng hơi quá sớm."
+    tip: "Phụ âm giúp từ ngữ rành mạch. Nếu hát yếu phụ âm đầu, bài nhạc sẽ bị mờ lời. Hãy tập bật thật dứt khoát."
   }
 ];
 
 export default function DashboardPronunciation() {
+  const [exercisesList, setExercisesList] = useState(EXERCISES);
   const [selectedEx, setSelectedEx] = useState(EXERCISES[0]);
   const [testState, setTestState] = useState<'IDLE' | 'RECORDING' | 'ANALYZING' | 'RESULT'>('IDLE');
   const [recordingTime, setRecordingTime] = useState(0);
+  const [customLyric, setCustomLyric] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [profile, setProfile] = useState<any>(null);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+
+  useEffect(() => {
+    if (auth.currentUser) {
+       const unsubscribe = onSnapshot(doc(db, 'users', auth.currentUser.uid), (doc) => {
+         if (doc.exists()) {
+           setProfile(doc.data());
+         }
+       });
+       return () => unsubscribe();
+    }
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -124,6 +154,48 @@ export default function DashboardPronunciation() {
     resetTest();
   };
 
+  const handleGenerateCustomExercise = async () => {
+    if (!customLyric.trim()) return;
+    setIsGenerating(true);
+    try {
+      const promptText = `Bạn là chuyên gia luyện thanh nhạc. Người dùng cung cấp đoạn lời bài hát sau để luyện phát âm:
+"${customLyric}"
+
+Hãy tạo một bài tập phát âm dựa trên câu này. Trả về đúng 1 chuỗi JSON thuần túy (không bọc trong markdown \`\`\`json) có cấu trúc sau:
+{
+  "id": <chọn 1 số ngẫu nhiên từ 1000 đến 9999>,
+  "title": "Tùy chỉnh: <Trích lời ngắn gọn nhất>",
+  "phrase": "<Nguyên văn câu hát của người dùng>",
+  "tip": "<Lời khuyên thanh nhạc cụ thể cho người hát câu này, nhấn mạnh các nguyên âm/phụ âm hoặc cách nhã chữ>",
+  "words": [
+    { "text": "từ1", "status": "good" },
+    { "text": "từ2", "status": "good" }
+  ],
+  "score": 0
+}
+Quan trọng: Tách câu lyric thành các từ (từ đơn hoặc ghép), đặt status là "good". Chỉ trả về JSON, không giải thích gì thêm.`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3.1-pro-preview",
+        contents: promptText,
+      });
+
+      let responseText = response.text || "";
+      responseText = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+
+      const newEx = JSON.parse(responseText);
+      setExercisesList(prev => [...prev, newEx]);
+      setSelectedEx(newEx);
+      setCustomLyric('');
+      resetTest();
+    } catch (error) {
+      console.error(error);
+      alert("Có lỗi xảy ra khi tạo bài tập từ AI, vui lòng thử lại.");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   // Format time (ex: 00:05)
   const formatTime = (secs: number) => {
     return `00:${secs.toString().padStart(2, '0')}`;
@@ -132,17 +204,32 @@ export default function DashboardPronunciation() {
   return (
     <div className="max-w-6xl mx-auto space-y-8 pb-16">
       <div>
-        <h1 className="text-3xl font-bold text-white mb-2">Chẩn đoán Phát âm & Chữ</h1>
-        <p className="text-slate-400 text-lg">Hát không chỉ đúng nốt mà còn phải rõ chữ. AI sẽ phân tích khẩu hình, cách đẩy hơi và nguyên âm của bạn.</p>
+        <h1 className="text-3xl font-bold text-white mb-2">Khởi động & Luyện khẩu hình</h1>
+        <p className="text-slate-400 text-lg">Khởi động dây thanh âm để tránh chấn thương và luyện khẩu hình nhả chữ chuẩn xác cùng AI.</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 relative">
+        {!profile?.isVip && (
+           <div className="absolute inset-0 z-50 rounded-3xl overflow-hidden backdrop-blur-md bg-slate-950/60 border border-slate-800 flex flex-col items-center justify-center text-center p-8">
+              <div className="w-20 h-20 bg-amber-500/10 rounded-full flex items-center justify-center mb-6">
+                 <Lock className="w-10 h-10 text-amber-500" />
+              </div>
+              <h2 className="text-3xl font-bold text-white mb-4">Dành riêng cho thành viên VIP</h2>
+              <p className="text-slate-300 max-w-md mb-8">Tính năng luyện tập khẩu hình nhả chữ và khởi động thanh quản bằng AI chuyên sâu chỉ có ở gói VIP. Nâng cấp ngay hôm nay để hát ngày một hay hơn!</p>
+              <Button 
+                onClick={() => setShowUpgradeModal(true)}
+                className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white font-bold py-6 px-10 rounded-full h-auto text-lg shadow-[0_0_30px_rgba(245,158,11,0.3)] hover:scale-105 transition-all"
+              >
+                <Crown className="w-6 h-6 mr-3" /> Nâng cấp VIP ngay
+              </Button>
+           </div>
+        )}
+
         {/* Left Col: Exercises List */}
         <div className="lg:col-span-1 border-r border-slate-800/50 pr-0 lg:pr-8 space-y-4">
           <h3 className="font-semibold text-slate-300 mb-4 px-2 tracking-wide uppercase text-sm">Các bài tập mẫu</h3>
-          <div className="space-y-3">
-             {EXERCISES.map(ex => (
+          <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+             {exercisesList.map(ex => (
                 <button 
                   key={ex.id}
                   onClick={() => handleSelectExercise(ex)}
@@ -159,10 +246,25 @@ export default function DashboardPronunciation() {
           </div>
           
           <div className="mt-8 p-4 bg-slate-900/50 rounded-xl border border-slate-800">
-             <div className="flex items-start gap-3">
+             <div className="flex items-start gap-3 mb-3">
                 <Info className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
-                <p className="text-xs text-slate-400 leading-relaxed">Bạn cũng có thể dán một đoạn lyric bất kỳ vào đây để AI tự tạo bài tập luyện phát âm riêng cho bạn (Sắp ra mắt).</p>
+                <p className="text-xs text-slate-400 leading-relaxed">Bạn có thể dán lời bài hát bất kỳ vào đây để AI tạo bài tập nhả chữ riêng cho bạn.</p>
              </div>
+             <textarea 
+               value={customLyric}
+               onChange={e => setCustomLyric(e.target.value)}
+               className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-sm text-white resize-none focus:outline-none focus:border-rose-500/50" 
+               rows={3} 
+               placeholder="Dán lời bài hát vào đây (hoặc 1 câu khó hát)..."
+             />
+             <Button 
+               onClick={handleGenerateCustomExercise}
+               disabled={isGenerating || !customLyric.trim()}
+               className="w-full mt-2 bg-blue-600 hover:bg-blue-500 text-white text-xs h-9"
+             >
+               {isGenerating ? <RefreshCw className="w-3 h-3 mr-2 animate-spin" /> : null}
+               {isGenerating ? 'Đang tạo...' : 'Tạo bài tập AI'}
+             </Button>
           </div>
         </div>
 
@@ -334,6 +436,7 @@ export default function DashboardPronunciation() {
         </div>
 
       </div>
+      <UpgradeModal isOpen={showUpgradeModal} onClose={() => setShowUpgradeModal(false)} />
     </div>
   );
 }

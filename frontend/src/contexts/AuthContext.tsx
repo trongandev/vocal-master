@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { User, onAuthStateChanged } from 'firebase/auth';
-import { auth } from '../lib/firebase';
+import { auth, db } from '../lib/firebase';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 
 interface AuthContextType {
   user: User | null;
@@ -16,8 +17,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
+      
+      if (currentUser) {
+        // Sync user to Firestore
+        const userRef = doc(db, 'users', currentUser.uid);
+        const userSnap = await getDoc(userRef);
+        
+        let role = 'user';
+        let isVip = false;
+        
+        if (currentUser.email === 'trongandev25@gmail.com') {
+           role = 'admin';
+           isVip = true;
+        }
+
+        if (!userSnap.exists()) {
+          await setDoc(userRef, {
+            email: currentUser.email,
+            displayName: currentUser.displayName,
+            photoURL: currentUser.photoURL,
+            role,
+            isVip,
+            createdAt: serverTimestamp(),
+          });
+        } else {
+             // For existing but missing role
+             const data = userSnap.data();
+             if (currentUser.email === 'trongandev25@gmail.com' && (data.role !== 'admin' || !data.isVip)) {
+                 await setDoc(userRef, { role: 'admin', isVip: true }, { merge: true });
+             }
+        }
+      }
+      
       setLoading(false);
     });
 

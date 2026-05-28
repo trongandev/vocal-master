@@ -66,13 +66,11 @@ export async function saveConvertedSong(input: SaveSongInput) {
     const songRef = doc(db, "songs", id)
     const chunks = chunkString(input.result.notes_base64, NOTE_CHUNK_SIZE)
 
-    await deleteExistingNoteChunks(id, input.userId)
-
     const batch = writeBatch(db)
     batch.set(songRef, stripUndefined({
         ownerId: input.userId,
-        title: input.title.trim() || String(input.result.metadata.source_name || "Untitled"),
-        artist: input.artist.trim() || "Unknown artist",
+        title: input.title.trim() || String(input.result.metadata.source_name || "Chưa đặt tên"),
+        artist: input.artist.trim() || "Chưa rõ ca sĩ",
         sourceType: "youtube",
         sourceUrl: input.sourceUrl,
         youtubeVideoId: input.youtubeVideoId || null,
@@ -133,8 +131,8 @@ function songFromSnapshot(snapshot: QueryDocumentSnapshot<DocumentData> | { id: 
     return {
         id: snapshot.id,
         ownerId: String(data.ownerId || ""),
-        title: String(data.title || "Untitled"),
-        artist: String(data.artist || "Unknown artist"),
+        title: String(data.title || "Chưa đặt tên"),
+        artist: String(data.artist || "Chưa rõ ca sĩ"),
         sourceType: "youtube",
         sourceUrl: String(data.sourceUrl || ""),
         youtubeVideoId: data.youtubeVideoId || null,

@@ -1,516 +1,521 @@
-import { useEffect, useMemo, useRef, useState } from "react"
-import { Link, useNavigate } from "react-router-dom"
-import { ArrowLeft, CheckCircle2, FileMusic, Link as LinkIcon, Loader2, Music2, Save, Search, Youtube } from "lucide-react"
-import { Button } from "../../components/ui/button"
-import { useAuth } from "../../contexts/AuthContext"
-import {
-    apiUrl,
-    createConvertJob,
-    decodeNotes,
-    extractYouTubeVideoId,
-    formatDuration,
-    formatViewCount,
-    getConvertResult,
-    getConvertStatus,
-    searchYouTubeVideos,
-    type ConvertJob,
-    type ConvertJobStatus,
-    type ConvertResult,
-    type KaraokeNote,
-    type YouTubeSearchResult,
-} from "../../lib/karaokeApi"
-import { saveConvertedSong } from "../../lib/songStore"
+import { useState, useRef, useEffect } from 'react';
+import { UploadCloud, FileMusic, ArrowRight, Save, Music, Play, Youtube, Link as LinkIcon, Crown, Search, Loader2, Music2, Activity, Eye, Clock } from 'lucide-react';
+import { Button } from '../../components/ui/button';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { db, auth } from '../../lib/firebase';
+import { collection, addDoc, doc, setDoc, serverTimestamp, query, where, getDocs, onSnapshot } from 'firebase/firestore';
+import { UpgradeModal } from '../../components/UpgradeModal';
 
-type UploadTab = "youtube" | "link"
-
-interface ConvertProgress {
-    progress: number
-    step: string
-    status: string
-}
-
-const DEFAULT_PROGRESS: ConvertProgress = { progress: 0, step: "idle", status: "pending" }
-const POLL_INTERVAL_MS = 1200
+const API_BASE = 'https://python.lrm.io.vn';
 
 export default function DashboardUpload() {
-    const navigate = useNavigate()
-    const { user } = useAuth()
-    const previewRef = useRef<HTMLCanvasElement>(null)
+  const [searchParams] = useSearchParams();
+  const qParam = searchParams.get('q') || '';
 
-    const [activeTab, setActiveTab] = useState<UploadTab>("youtube")
-    const [query, setQuery] = useState("")
-    const [linkUrl, setLinkUrl] = useState("")
-    const [searching, setSearching] = useState(false)
-    const [results, setResults] = useState<YouTubeSearchResult[]>([])
-    const [selectedVideo, setSelectedVideo] = useState<YouTubeSearchResult | null>(null)
+  const [activeTab, setActiveTab] = useState<'youtube' | 'link' | 'upload'>('youtube');
+  const navigate = useNavigate();
+  
+  // Search state
+  const [searchQuery, setSearchQuery] = useState(qParam);
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [hasInitSearch, setHasInitSearch] = useState(false);
+  
+  // Convert state
+  const [isConverting, setIsConverting] = useState(false);
+  const [convertProgress, setConvertProgress] = useState(0);
+  const [convertStep, setConvertStep] = useState('');
+  const [convertError, setConvertError] = useState<string | null>(null);
+  
+  // Selection state
+  const [selectedSong, setSelectedSong] = useState<any>(null);
+  const [existingSongId, setExistingSongId] = useState<string | null>(null);
 
-    const [converting, setConverting] = useState(false)
-    const [progress, setProgress] = useState<ConvertProgress>(DEFAULT_PROGRESS)
-    const [convertJob, setConvertJob] = useState<ConvertJob | null>(null)
-    const [convertResult, setConvertResult] = useState<ConvertResult | null>(null)
-    const [notes, setNotes] = useState<KaraokeNote[]>([])
+  const [profile, setProfile] = useState<any>(null);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
-    const [title, setTitle] = useState("")
-    const [artist, setArtist] = useState("")
-    const [saving, setSaving] = useState(false)
-    const [message, setMessage] = useState("")
-    const [error, setError] = useState("")
-
-    const selectedSourceUrl = activeTab === "youtube" ? selectedVideo?.url || "" : linkUrl.trim()
-    const selectedVideoId = selectedVideo?.video_id || extractYouTubeVideoId(selectedSourceUrl)
-
-    const analysis = useMemo(() => buildAnalysis(notes, convertResult), [notes, convertResult])
-
-    useEffect(() => {
-        drawPreview(previewRef.current, notes)
-    }, [notes])
-
-    async function handleSearch() {
-        const trimmed = query.trim()
-        if (!trimmed) {
-            setError("Nhap tu khoa tim kiem YouTube.")
-            return
-        }
-
-        setSearching(true)
-        setError("")
-        setMessage("")
-        setSelectedVideo(null)
-
-        try {
-            const videos = await searchYouTubeVideos(trimmed, 6)
-            setResults(videos)
-            if (videos.length === 0) setMessage("Khong tim thay video phu hop.")
-        } catch (err) {
-            setError(errorMessage(err))
-        } finally {
-            setSearching(false)
-        }
+  useEffect(() => {
+    if (auth.currentUser) {
+       const unsubscribe = onSnapshot(doc(db, 'users', auth.currentUser.uid), (doc) => {
+         if (doc.exists()) {
+           setProfile(doc.data());
+         }
+       });
+       return () => unsubscribe();
     }
+  }, []);
 
-    async function handleConvert() {
-        if (!selectedSourceUrl) {
-            setError(activeTab === "youtube" ? "Chon mot video YouTube truoc khi tach MIDI." : "Dan link YouTube truoc khi xu ly.")
-            return
-        }
-
-        setConverting(true)
-        setError("")
-        setMessage("")
-        setConvertResult(null)
-        setNotes([])
-        setProgress({ progress: 0, step: "queued", status: "pending" })
-
-        try {
-            const job = await createConvertJob(selectedSourceUrl)
-            setConvertJob(job)
-            setProgress({ progress: job.status === "done" ? 100 : 0, step: job.status === "done" ? "cache_hit" : "queued", status: job.status })
-
-            const result = await waitForConvertDone(job, setProgress)
-            const decoded = decodeNotes(result.notes_base64)
-            setConvertResult(result)
-            setNotes(decoded)
-
-            const metadataTitle = typeof result.metadata.source_name === "string" ? result.metadata.source_name : ""
-            setTitle(selectedVideo?.title || metadataTitle || "Untitled")
-            setArtist(selectedVideo?.channel || "")
-            setProgress({ progress: 100, step: "done", status: "done" })
-            setMessage("Da tach MIDI va san sang luu vao thu vien.")
-        } catch (err) {
-            setError(errorMessage(err))
-        } finally {
-            setConverting(false)
-        }
+  const checkUploadLimit = async () => {
+    if (!auth.currentUser) {
+       alert("Bạn cần đăng nhập để thao tác");
+       return false;
     }
-
-    async function handleSave() {
-        if (!user || !convertJob || !convertResult) return
-
-        setSaving(true)
-        setError("")
-        try {
-            const songId = await saveConvertedSong({
-                userId: user.uid,
-                title,
-                artist,
-                sourceUrl: selectedSourceUrl,
-                youtubeVideoId: selectedVideoId,
-                thumbnail: selectedVideo?.thumbnail || (selectedVideoId ? `https://i.ytimg.com/vi/${selectedVideoId}/hqdefault.jpg` : null),
-                duration: selectedVideo?.duration ?? (typeof convertResult.metadata.duration === "number" ? convertResult.metadata.duration : null),
-                pythonSongId: convertJob.song_id,
-                convertJobId: convertJob.job_id,
-                result: convertResult,
-            })
-            navigate(`/play/${songId}`)
-        } catch (err) {
-            setError(errorMessage(err))
-        } finally {
-            setSaving(false)
-        }
+    
+    if (profile?.isVip) return true;
+    
+    try {
+       const q = query(collection(db, 'songs'), where('ownerId', '==', auth.currentUser.uid));
+       const snap = await getDocs(q);
+       
+       const now = new Date();
+       const currentMonth = now.getMonth();
+       const currentYear = now.getFullYear();
+       
+       let monthCount = 0;
+       snap.docs.forEach(doc => {
+          const data = doc.data();
+          if (data.createdAt && data.createdAt.toDate) {
+             const date = data.createdAt.toDate();
+             if (date.getMonth() === currentMonth && date.getFullYear() === currentYear) {
+                monthCount++;
+             }
+          }
+       });
+       
+       if (monthCount >= 10) {
+          setShowUpgradeModal(true);
+          return false;
+       }
+       return true;
+    } catch (e) {
+       console.error("Lỗi đếm số bài hát", e);
+       return false;
     }
+  };
 
-    return (
-        <div className="mx-auto max-w-5xl space-y-8 pb-12">
-            <div className="flex items-center gap-4 text-sm font-medium">
-                <Link to="/dashboard" className="inline-flex items-center gap-2 text-slate-400 hover:text-white">
-                    <ArrowLeft className="h-4 w-4" />
-                    Bai hat cua toi
-                </Link>
-                <span className="text-slate-600">/</span>
-                <span className="text-violet-400">Them bai hat moi</span>
+  const formatDuration = (seconds?: number) => {
+    if (!seconds) return '--:--';
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  };
+
+  const formatViews = (views?: number) => {
+    if (!views) return '0 view';
+    if (views >= 1000000) return `${(views / 1000000).toFixed(1)}M views`;
+    if (views >= 1000) return `${(views / 1000).toFixed(1)}K views`;
+    return `${views} views`;
+  };
+
+  const handleSearch = async (queryToSearch?: string) => {
+    const q = queryToSearch || searchQuery;
+    if (!q.trim()) return;
+    setIsSearching(true);
+    try {
+      const res = await fetch(`${API_BASE}/convert/youtube/search?q=${encodeURIComponent(q)}&limit=5`);
+      const data = await res.json();
+      setSearchResults(data);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  useEffect(() => {
+    if (qParam && !hasInitSearch) {
+      setHasInitSearch(true);
+      handleSearch(qParam);
+    }
+  }, [qParam, hasInitSearch]);
+
+  const handleConfirmStart = async () => {
+    if (selectedSong) {
+      if (!(await checkUploadLimit())) return;
+
+      const songToConvert = selectedSong;
+      
+      if (!auth.currentUser) {
+        alert("Bạn cần đăng nhập để thao tác");
+        return;
+      }
+      
+      try {
+        let videoId = songToConvert.id || songToConvert.video_id;
+        if (!videoId && songToConvert.url) {
+          try {
+            const urlObj = new URL(songToConvert.url);
+            videoId = urlObj.searchParams.get('v');
+          } catch (e) {}
+        }
+        
+        let existingId = null;
+        
+        if (videoId) {
+           const qByVideoId = query(collection(db, 'songs'), where('youtubeVideoId', '==', videoId));
+           const snap = await getDocs(qByVideoId);
+           if (!snap.empty) existingId = snap.docs[0].id;
+        } else {
+           const qByText = query(collection(db, 'songs'), where('title', '==', songToConvert.title), where('artist', '==', songToConvert.channel));
+           const snap = await getDocs(qByText);
+           if (!snap.empty) existingId = snap.docs[0].id;
+        }
+        
+        if (existingId) {
+           setExistingSongId(existingId);
+           return;
+        }
+      } catch (error) {
+        console.error("Lỗi kiểm tra bài hát tồn tại", error);
+      }
+
+      setSelectedSong(null);
+      setExistingSongId(null);
+      startConversion(songToConvert.url, songToConvert);
+    }
+  };
+
+  const startConversion = async (url: string, sourceData?: any) => {
+    if (!auth.currentUser) {
+      alert("Bạn cần đăng nhập để thao tác");
+      return;
+    }
+    
+    setIsConverting(true);
+    setConvertProgress(0);
+    setConvertStep('Khởi tạo...');
+    setConvertError(null);
+    
+    try {
+      const res = await fetch(`${API_BASE}/convert`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url })
+      });
+      
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Lỗi khởi tạo');
+      
+      const jobId = data.job_id;
+      const pythonSongId = data.song_id;
+      
+      // Setup SSE
+      console.log(`Connecting to SSE: ${API_BASE}/convert/${jobId}/events`);
+      const eventSource = new EventSource(`${API_BASE}/convert/${jobId}/events`);
+      
+      eventSource.onopen = () => {
+         console.log("SSE Connection opened");
+         setConvertStep("Đang kết nối tới máy chủ phân tích...");
+      };
+
+      eventSource.onmessage = (event) => {
+        console.log("SSE onmessage:", event.data);
+        try {
+          const eData = JSON.parse(event.data);
+          if (eData.progress !== undefined) setConvertProgress(eData.progress);
+          if (eData.step) setConvertStep(eData.step);
+        } catch (e) {
+          console.error("Progress parse error:", e);
+        }
+      };
+
+      eventSource.addEventListener("status", (event: any) => {
+        console.log("SSE status:", event.data);
+        try {
+          const eData = JSON.parse(event.data);
+          if (eData.progress !== undefined) setConvertProgress(eData.progress);
+          if (eData.step) setConvertStep(eData.step);
+        } catch (e) {
+          console.error("Status parse error:", e);
+        }
+      });
+      
+      eventSource.addEventListener("error", (event: any) => {
+        console.error("SSE error event:", event);
+        if (event.data) {
+           try {
+              const eData = JSON.parse(event.data);
+              setConvertError(eData.message || "Lỗi xử lý file karaoke.");
+           } catch (e) {
+              setConvertError("Lỗi không xác định từ server.");
+           }
+           eventSource.close();
+        } else {
+           console.error("SSE Network Error. readyState:", eventSource.readyState);
+           if (eventSource.readyState === EventSource.CLOSED) {
+               setConvertError("Mất kết nối tới server xử lý.");
+               eventSource.close();
+           }
+        }
+      });
+      
+      eventSource.addEventListener("done", async (event: any) => {
+        console.log("SSE done event:", event.data);
+        eventSource.close();
+        setConvertStep('Lưu vào thư viện...');
+        setConvertProgress(100);
+        
+        try {
+          const result = JSON.parse(event.data);
+          await saveToLibrary(result, pythonSongId, jobId, url, sourceData);
+        } catch (e) {
+          console.error("Save error:", e);
+          setConvertError("Lỗi khi lưu bài hát: " + e);
+          // Không gọi setIsConverting(false) để hiển thị lỗi
+        }
+      });
+      
+    } catch (error: any) {
+      console.error("Convert:", error);
+      setConvertError(error.message || "Có lỗi xảy ra kết nối server.");
+      // Bỏ setIsConverting(false) để UI giữ lại thanh loading và hiển thị form báo lỗi
+    }
+  };
+
+  const saveToLibrary = async (result: any, pythonSongId: string, jobId: string, url: string, sourceData?: any) => {
+    if (!auth.currentUser) return;
+    
+    // Chunking the base64 data (Firestore max size 1MB, we split just to be safe if very big, 
+    // but usually MIDI float32 is small. We'll do 1 chunk for simplicity but structure allows more)
+    
+    const songDocRef = doc(collection(db, 'songs'));
+    
+    await setDoc(doc(db, 'songs', songDocRef.id, 'noteChunks', 'chunk_0'), {
+      ownerId: auth.currentUser.uid,
+      songId: songDocRef.id,
+      index: 0,
+      data: result.notes_base64
+    });
+    
+    let videoId = pythonSongId; // Usually the backend returns youtube video id as song_id for YT
+    if (sourceData && sourceData.video_id) {
+       videoId = sourceData.video_id;
+    }
+    
+    await setDoc(songDocRef, {
+      ownerId: auth.currentUser.uid,
+      title: sourceData?.title || result.metadata?.title || 'Unknown Song',
+      artist: sourceData?.channel || result.metadata?.artist || 'Unknown Artist',
+      sourceType: 'youtube',
+      sourceUrl: url,
+      youtubeVideoId: videoId,
+      thumbnail: sourceData?.thumbnail || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+      duration: result.metadata?.duration || sourceData?.duration || 0,
+      pythonSongId: pythonSongId,
+      convertJobId: jobId,
+      noteChunkCount: 1,
+      status: 'public',
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+    
+    // Redirect to play screen
+    navigate(`/play/${songDocRef.id}`);
+  };
+
+  const [linkInput, setLinkInput] = useState('');
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-8 pb-32">
+      <div className="flex items-center gap-4 text-sm font-medium">
+        <Link to="/dashboard" className="text-slate-400 hover:text-white">Bài hát của tôi</Link>
+        <span className="text-slate-600">/</span>
+        <span className="text-violet-400">Thêm bài hát mới</span>
+      </div>
+
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl relative overflow-hidden">
+        {isConverting ? (
+          <div className="flex flex-col items-center justify-center py-20 min-h-[400px]">
+             <div className="relative mb-8">
+               <div className="w-32 h-32 border-4 border-slate-800 rounded-full flex items-center justify-center">
+                  <div className="text-3xl font-black text-white">{convertProgress}%</div>
+               </div>
+               <svg className="absolute -inset-1 w-[136px] h-[136px] transform -rotate-90">
+                 <circle cx="68" cy="68" r="64" stroke="currentColor" strokeWidth="8" fill="transparent" className="text-violet-500" strokeDasharray="402" strokeDashoffset={402 - (402 * convertProgress) / 100} style={{ transition: 'stroke-dashoffset 1.5s ease-out' }} />
+               </svg>
+             </div>
+             
+             <h3 className="text-xl font-bold text-white mb-2">Đang xử lý AI Karaoke</h3>
+             <p className="text-violet-400 font-mono tracking-widest uppercase text-sm mb-2 flex items-center gap-2">
+                <Activity className="w-4 h-4 animate-pulse" /> {convertStep.replace(/_/g, ' ')}
+             </p>
+             <p className="text-slate-500 text-sm mb-6 flex items-center gap-2">
+                <Clock className="w-4 h-4" /> Có thể mất từ 30s ~ 40s
+             </p>
+             
+             {convertError && (
+                <div className="bg-red-500/10 border border-red-500/30 text-red-400 p-4 rounded-xl mt-4 max-w-md text-center">
+                   <p className="font-bold mb-1">Lỗi xử lý</p>
+                   <p className="text-sm">{convertError}</p>
+                   <Button onClick={() => setIsConverting(false)} variant="outline" className="mt-4 border-red-500/30 hover:bg-red-500/20 text-red-300">
+                     Thử lại
+                   </Button>
+                </div>
+             )}
+          </div>
+        ) : (
+          <div className="space-y-8">
+            <div className="text-center">
+              <h2 className="text-2xl font-bold text-white mb-2">Thêm bài hát để luyện tập</h2>
+              <p className="text-slate-400 text-sm">Hệ thống AI sẽ tự động bóc tách lời, nhận diện hợp âm, cao độ và nốt nhạc.</p>
             </div>
 
-            <section className="rounded-3xl border border-slate-800 bg-slate-900 p-6 shadow-2xl md:p-8">
-                <div className="mb-8 text-center">
-                    <h1 className="mb-2 text-2xl font-bold text-white">Them bai hat de luyen tap karaoke</h1>
-                    <p className="text-sm text-slate-400">Tim YouTube karaoke, tach MIDI bang Python server, xem ket qua phan tich roi luu vao Firestore.</p>
-                </div>
+            {/* Tabs */}
+            <div className="flex p-1 bg-slate-950 rounded-xl border border-slate-800 max-w-2xl mx-auto">
+              <button 
+                onClick={() => setActiveTab('youtube')}
+                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg text-sm font-bold transition-all ${
+                  activeTab === 'youtube' ? 'bg-slate-800 text-white shadow-md' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                }`}
+              >
+                <Youtube className="w-5 h-5 text-red-500" /> YouTube
+              </button>
+              <button 
+                onClick={() => setActiveTab('link')}
+                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg text-sm font-bold transition-all ${
+                  activeTab === 'link' ? 'bg-slate-800 text-white shadow-md' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                }`}
+              >
+                <LinkIcon className="w-4 h-4 text-blue-400" /> Dán link
+              </button>
+              <button 
+                onClick={() => setActiveTab('upload')}
+                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg text-sm font-bold transition-all ${
+                  activeTab === 'upload' ? 'bg-slate-800 text-white shadow-md' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                }`}
+              >
+                <UploadCloud className="w-4 h-4 text-violet-400" /> Upload File
+                <span className="bg-amber-500/20 text-amber-500 text-[10px] px-1.5 py-0.5 rounded font-bold uppercase flex items-center gap-1 border border-amber-500/30">
+                  <Crown className="w-3 h-3" /> VIP
+                </span>
+              </button>
+            </div>
 
-                <div className="mx-auto mb-8 flex max-w-xl rounded-xl border border-slate-800 bg-slate-950 p-1">
-                    <button
-                        type="button"
-                        onClick={() => setActiveTab("youtube")}
-                        className={`flex flex-1 items-center justify-center gap-2 rounded-lg py-3 text-sm font-bold transition ${
-                            activeTab === "youtube" ? "bg-slate-800 text-white" : "text-slate-400 hover:bg-slate-800/50 hover:text-slate-200"
-                        }`}
-                    >
-                        <Youtube className="h-5 w-5 text-red-500" />
-                        Tim YouTube
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => setActiveTab("link")}
-                        className={`flex flex-1 items-center justify-center gap-2 rounded-lg py-3 text-sm font-bold transition ${
-                            activeTab === "link" ? "bg-slate-800 text-white" : "text-slate-400 hover:bg-slate-800/50 hover:text-slate-200"
-                        }`}
-                    >
-                        <LinkIcon className="h-4 w-4 text-blue-400" />
-                        Dan link
-                    </button>
-                </div>
-
-                {activeTab === "youtube" ? (
-                    <div className="space-y-5">
-                        <div className="relative mx-auto max-w-2xl">
-                            <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-500" />
-                            <input
-                                value={query}
-                                onChange={(event) => setQuery(event.target.value)}
-                                onKeyDown={(event) => {
-                                    if (event.key === "Enter") void handleSearch()
-                                }}
-                                placeholder="Tim ten bai hat karaoke tren YouTube..."
-                                className="w-full rounded-2xl border border-slate-700 bg-slate-950 py-4 pl-12 pr-36 text-white placeholder:text-slate-600 focus:border-red-500/50 focus:outline-none focus:ring-2 focus:ring-red-500"
-                            />
-                            <Button
-                                type="button"
-                                onClick={handleSearch}
-                                disabled={searching}
-                                className="absolute right-2 top-1/2 h-10 -translate-y-1/2 rounded-xl bg-red-600 px-5 text-white hover:bg-red-500"
-                            >
-                                {searching ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}
-                                Tim
-                            </Button>
-                        </div>
-
-                        {results.length > 0 && (
-                            <div className="grid gap-3">
-                                {results.map((video) => {
-                                    const isSelected = selectedVideo?.url === video.url
-                                    return (
-                                        <button
-                                            type="button"
-                                            key={video.url}
-                                            onClick={() => setSelectedVideo(video)}
-                                            className={`grid gap-4 rounded-2xl border p-3 text-left transition md:grid-cols-[160px_1fr_auto] md:items-center ${
-                                                isSelected ? "border-violet-500 bg-violet-500/10" : "border-slate-800 bg-slate-950/70 hover:border-slate-700"
-                                            }`}
-                                        >
-                                            <div className="aspect-video overflow-hidden rounded-xl bg-slate-800">
-                                                {video.thumbnail ? <img src={video.thumbnail} alt={video.title} className="h-full w-full object-cover" /> : null}
-                                            </div>
-                                            <div className="min-w-0">
-                                                <div className="line-clamp-2 font-semibold text-white">{video.title}</div>
-                                                <div className="mt-2 flex flex-wrap gap-3 text-xs text-slate-500">
-                                                    <span>{video.channel || "Unknown channel"}</span>
-                                                    <span>{formatDuration(video.duration)}</span>
-                                                    <span>{formatViewCount(video.view_count)} views</span>
-                                                </div>
-                                            </div>
-                                            <div className={`rounded-full px-3 py-1 text-xs font-bold ${isSelected ? "bg-violet-500 text-white" : "bg-slate-800 text-slate-400"}`}>
-                                                {isSelected ? "Da chon" : "Chon"}
-                                            </div>
-                                        </button>
-                                    )
-                                })}
-                            </div>
-                        )}
+            {/* Tab Contents */}
+            <div className="mt-8 relative z-10 min-h-[300px]">
+              {activeTab === 'youtube' && (
+                 <div className="space-y-6">
+                    <div className="relative max-w-2xl mx-auto">
+                       <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-500 w-5 h-5" />
+                       <input 
+                         type="text" 
+                         value={searchQuery}
+                         onChange={e => setSearchQuery(e.target.value)}
+                         onKeyDown={e => e.key === 'Enter' && handleSearch()}
+                         placeholder="Tìm kiếm video karaoke trên YouTube..." 
+                         className="w-full bg-slate-950 border border-slate-700 rounded-2xl pl-12 pr-32 py-4 text-white focus:ring-2 focus:ring-red-500 focus:outline-none focus:border-red-500/50 placeholder:text-slate-600 transition-all text-lg"
+                       />
+                       <Button onClick={handleSearch} disabled={isSearching} className="absolute right-2 top-1/2 transform -translate-y-1/2 bg-red-600 hover:bg-red-500 text-white h-10 px-6 rounded-xl font-bold mt-[0]">
+                          {isSearching ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Tìm kiếm'}
+                       </Button>
                     </div>
-                ) : (
-                    <div className="mx-auto max-w-2xl space-y-3">
-                        <label className="text-sm font-semibold text-slate-300">YouTube URL</label>
-                        <div className="relative">
-                            <LinkIcon className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-500" />
-                            <input
-                                value={linkUrl}
-                                onChange={(event) => setLinkUrl(event.target.value)}
-                                placeholder="https://www.youtube.com/watch?v=..."
-                                className="w-full rounded-2xl border border-slate-700 bg-slate-950 py-4 pl-12 pr-4 text-white placeholder:text-slate-600 focus:border-blue-500/50 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            />
-                        </div>
-                    </div>
-                )}
 
-                <div className="mt-8 rounded-2xl border border-slate-800 bg-slate-950/60 p-5">
-                    <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                        <div>
-                            <div className="text-sm font-semibold text-white">Qua trinh tach file thanh MIDI</div>
-                            <div className="text-xs text-slate-500">Server Python se download audio, chay Basic Pitch va tra ve metadata + notes_base64.</div>
-                        </div>
-                        <Button type="button" onClick={handleConvert} disabled={converting || !selectedSourceUrl} className="bg-violet-600 text-white hover:bg-violet-500">
-                            {converting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Music2 className="mr-2 h-4 w-4" />}
-                            Tach MIDI
-                        </Button>
-                    </div>
-                    <div className="h-3 overflow-hidden rounded-full bg-slate-800">
-                        <div className="h-full bg-violet-500 transition-all" style={{ width: `${Math.max(0, Math.min(100, progress.progress))}%` }} />
-                    </div>
-                    <div className="mt-2 flex justify-between text-xs text-slate-500">
-                        <span>{progress.status}</span>
-                        <span>{progress.step} - {progress.progress}%</span>
-                    </div>
-                </div>
-
-                {error && <div className="mt-5 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">{error}</div>}
-                {message && <div className="mt-5 rounded-2xl border border-green-500/30 bg-green-500/10 p-4 text-sm text-green-200">{message}</div>}
-
-                {convertResult && (
-                    <div className="mt-8 space-y-6">
-                        <div className="flex flex-col gap-4 border-t border-slate-800 pt-6 md:flex-row md:items-start md:justify-between">
-                            <div>
-                                <h2 className="text-2xl font-bold text-white">Ket qua phan tich</h2>
-                                <div className="mt-2 flex items-center gap-2 text-sm text-slate-400">
-                                    <CheckCircle2 className="h-4 w-4 text-green-400" />
-                                    Convert thanh cong bang {String(convertResult.metadata.transcription_engine || "basic_pitch")}
+                    {searchResults.length > 0 && (
+                      <div className="max-w-2xl mx-auto space-y-3 mt-8">
+                        {searchResults.map((result: any, idx: number) => (
+                           <div key={idx} onClick={() => setSelectedSong(result)} className="flex gap-4 p-3 rounded-2xl bg-slate-950 border border-slate-800 hover:border-violet-500/50 hover:bg-slate-800/30 transition-all cursor-pointer group">
+                             <div className="relative w-32 h-20 rounded-xl overflow-hidden shrink-0">
+                               <img src={result.thumbnail} alt={result.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                               <div className="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-colors" />
+                               <div className="absolute bottom-1 right-1 bg-black/80 px-1.5 py-0.5 rounded text-[10px] text-white font-medium flex items-center gap-1">
+                                 <Clock className="w-3 h-3" />
+                                 {formatDuration(result.duration)}
+                               </div>
+                             </div>
+                             <div className="flex flex-col justify-center flex-1 min-w-0">
+                               <h4 className="text-white font-bold truncate mb-1 group-hover:text-violet-400 transition-colors">{result.title}</h4>
+                               <div className="flex items-center text-xs text-slate-500 truncate gap-2">
+                                  <span className="truncate max-w-[120px]">{result.channel}</span>
+                                  <span className="flex items-center gap-1"><Eye className="w-3 h-3" /> {formatViews(result.view_count)}</span>
+                               </div>
+                             </div>
+                             <div className="flex items-center justify-center px-4">
+                                <div className="w-10 h-10 rounded-full bg-violet-600/10 text-violet-400 group-hover:bg-violet-600 group-hover:text-white flex items-center justify-center transition-colors">
+                                   <Music2 className="w-5 h-5" />
                                 </div>
-                            </div>
-                            <Button type="button" variant="outline" className="border-slate-700 bg-transparent text-slate-300 hover:bg-slate-800" onClick={() => resetResult(setConvertResult, setNotes, setProgress)}>
-                                Chon bai khac
-                            </Button>
-                        </div>
+                             </div>
+                           </div>
+                        ))}
+                      </div>
+                    )}
+                 </div>
+              )}
 
-                        <div className="grid gap-4 md:grid-cols-4">
-                            {analysis.map((item) => (
-                                <div key={item.label} className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
-                                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">{item.label}</div>
-                                    <div className="mt-2 text-xl font-bold text-white">{item.value}</div>
-                                </div>
-                            ))}
-                        </div>
-
-                        <div className="space-y-3">
-                            <label className="text-sm font-semibold text-slate-300">Ban xem truoc MIDI & not nhac</label>
-                            <div className="h-56 rounded-2xl border border-slate-800 bg-slate-950 p-3">
-                                <canvas ref={previewRef} className="h-full w-full rounded-xl bg-slate-900" />
-                            </div>
-                        </div>
-
-                        <div className="grid gap-5 md:grid-cols-2">
-                            <label className="space-y-2">
-                                <span className="text-sm font-semibold text-slate-300">Ten bai hat</span>
-                                <input
-                                    value={title}
-                                    onChange={(event) => setTitle(event.target.value)}
-                                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-violet-500"
-                                />
-                            </label>
-                            <label className="space-y-2">
-                                <span className="text-sm font-semibold text-slate-300">Ca si / Kenh</span>
-                                <input
-                                    value={artist}
-                                    onChange={(event) => setArtist(event.target.value)}
-                                    placeholder="Nhap ca si neu can"
-                                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-violet-500"
-                                />
-                            </label>
-                        </div>
-
-                        <div className="flex justify-end gap-3 pt-2">
-                            <Link to="/dashboard">
-                                <Button variant="ghost" className="text-slate-400 hover:text-white">Huy bo</Button>
-                            </Link>
-                            <Button type="button" onClick={handleSave} disabled={saving || !title.trim()} className="bg-violet-600 text-white hover:bg-violet-500">
-                                {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                                Luu vao thu vien
-                            </Button>
-                        </div>
+              {activeTab === 'link' && (
+                 <div className="space-y-6">
+                    <div className="relative max-w-2xl mx-auto">
+                       <LinkIcon className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-500 w-5 h-5" />
+                       <input 
+                         type="text" 
+                         value={linkInput}
+                         onChange={e => setLinkInput(e.target.value)}
+                         placeholder="Dán đường dẫn YouTube (ví dụ: https://youtube.com/...)" 
+                         className="w-full bg-slate-950 border border-slate-700 rounded-2xl pl-12 pr-32 py-4 text-white focus:ring-2 focus:ring-blue-500 focus:outline-none focus:border-blue-500/50 placeholder:text-slate-600 transition-all text-lg"
+                       />
+                       <Button onClick={async () => { if (await checkUploadLimit()) startConversion(linkInput); }} disabled={!linkInput.trim()} className="absolute right-2 top-1/2 transform -translate-y-1/2 bg-blue-600 hover:bg-blue-500 text-white h-10 px-6 rounded-xl font-bold mt-[0]">
+                          Kiểm Tra AI
+                       </Button>
                     </div>
-                )}
+                    <div className="text-center text-sm text-slate-500 mt-2">
+                       Hỗ trợ trích xuất âm thanh, tách lời ca sĩ và tạo nốt MIDI chuẩn.
+                    </div>
+                 </div>
+              )}
 
-                <div className="mt-8 flex gap-4 rounded-xl border border-slate-800 bg-slate-950/50 p-4 text-sm">
-                    <FileMusic className="h-6 w-6 shrink-0 text-slate-500" />
-                    <p className="text-slate-500">
-                        Luu y: Python server cache ket qua trong RAM. Sau khi luu, trang play se nap lai reference MIDI tu Firestore vao backend truoc khi cham diem.
-                    </p>
+              {activeTab === 'upload' && (
+                 <div>
+                    <div className="border-2 border-dashed border-slate-700/50 hover:border-violet-500/50 rounded-3xl p-12 flex flex-col items-center justify-center text-center bg-slate-950/30 hover:bg-slate-800/30 transition-colors mx-auto max-w-2xl cursor-not-allowed opacity-70 relative overflow-hidden group">
+                      
+                      <div className="w-16 h-16 rounded-full bg-violet-600/10 text-violet-400 flex items-center justify-center mb-4 relative z-10">
+                        <UploadCloud className="w-8 h-8" />
+                      </div>
+                      <h3 className="text-lg font-semibold text-white mb-1 relative z-10">Tải lên File Âm thanh/Video</h3>
+                      <p className="text-slate-400 text-sm mb-6 relative z-10">Tính năng đang phát triển. Vui lòng sử dụng YouTube tạm thời.</p>
+                      
+                      <div className="mt-4 flex items-center justify-center gap-2 text-xs font-bold text-amber-500 bg-amber-500/10 px-4 py-2 rounded-lg border border-amber-500/20 relative z-10">
+                         <Crown className="w-4 h-4" />
+                         TÍNH NĂNG V.I.P SẮP RA MẮT
+                      </div>
+                    </div>
+                 </div>
+              )}
+            </div>
+            
+            {/* Context info under */}
+            <div className="bg-slate-950/50 rounded-xl p-4 flex gap-4 text-sm border border-slate-800 max-w-2xl mx-auto mt-8 relative z-10">
+              <FileMusic className="w-6 h-6 text-slate-500 shrink-0" />
+              <div>
+                <p className="text-slate-300 font-bold mb-1">Công nghệ Pitch AI Pipeline:</p>
+                <p className="text-slate-500 leading-relaxed text-xs">Phân tách hòa âm, dò cao độ bằng CREPE, và gộp thành các khối nốt MIDI. Đảm bảo sai số dưới ~10 cents.</p>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {selectedSong && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-slate-700/50 rounded-3xl p-6 shadow-2xl max-w-sm w-full relative overflow-hidden animate-in fade-in zoom-in duration-200">
+             <div className="w-full aspect-video rounded-xl overflow-hidden mb-4 relative">
+                <img src={selectedSong.thumbnail} alt={selectedSong.title} className="w-full h-full object-cover" />
+             </div>
+             <h3 className="font-bold text-lg text-white mb-1 leading-tight">{selectedSong.title}</h3>
+             <p className="text-sm text-slate-400 mb-6">{selectedSong.channel}</p>
+             
+             {existingSongId ? (
+                <div className="bg-amber-500/10 border border-amber-500/30 text-amber-400 text-sm p-4 rounded-xl mb-4 text-center">
+                   <p className="font-bold mb-3">Bài hát này đã có sẵn trong thư viện cộng đồng</p>
+                   <Link to={`/play/${existingSongId}`}>
+                      <Button className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold">
+                         Chuyển đến Hát ngay
+                      </Button>
+                   </Link>
+                   <Button variant="ghost" onClick={() => { setSelectedSong(null); setExistingSongId(null); }} className="w-full mt-2 text-slate-400 hover:text-white">
+                      Đóng
+                   </Button>
                 </div>
-            </section>
+             ) : (
+                <div className="flex gap-3">
+                   <Button variant="outline" className="flex-1 bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-300" onClick={() => { setSelectedSong(null); setExistingSongId(null); }}>Hủy</Button>
+                   <Button className="flex-1 bg-violet-600 hover:bg-violet-500 text-white" onClick={handleConfirmStart}>Xác nhận & Xử lý</Button>
+                </div>
+             )}
+          </div>
         </div>
-    )
+      )}
+      
+      <UpgradeModal isOpen={showUpgradeModal} onClose={() => setShowUpgradeModal(false)} />
+    </div>
+  );
 }
 
-async function waitForConvertDone(job: ConvertJob, onStatus: (progress: ConvertProgress) => void): Promise<ConvertResult> {
-    if (job.status === "done" && job.result_url) return getConvertResult(job.result_url)
-
-    return new Promise((resolve, reject) => {
-        let settled = false
-        let pollingStarted = false
-        let events: EventSource | null = null
-
-        const finish = (result: ConvertResult) => {
-            if (settled) return
-            settled = true
-            events?.close()
-            resolve(result)
-        }
-
-        const fail = (err: unknown) => {
-            if (settled) return
-            settled = true
-            events?.close()
-            reject(err)
-        }
-
-        const startPolling = () => {
-            if (pollingStarted || settled) return
-            pollingStarted = true
-            pollConvertResult(job.status_url, onStatus).then(finish).catch(fail)
-        }
-
-        try {
-            events = new EventSource(apiUrl(job.events_url))
-            events.addEventListener("status", (event) => {
-                const payload = JSON.parse((event as MessageEvent).data) as ConvertJobStatus
-                onStatus({ progress: payload.progress || 0, step: payload.step || "processing", status: payload.status })
-            })
-            events.addEventListener("done", (event) => {
-                finish(JSON.parse((event as MessageEvent).data) as ConvertResult)
-            })
-            events.addEventListener("error", (event) => {
-                if (event instanceof MessageEvent && event.data) {
-                    try {
-                        const payload = JSON.parse(event.data)
-                        fail(new Error(payload.error_detail || payload.error || "Convert failed"))
-                    } catch {
-                        fail(new Error("Convert failed"))
-                    }
-                    return
-                }
-                events?.close()
-                startPolling()
-            })
-            events.onerror = () => {
-                events?.close()
-                startPolling()
-            }
-        } catch {
-            startPolling()
-        }
-    })
-}
-
-async function pollConvertResult(statusUrl: string, onStatus: (progress: ConvertProgress) => void): Promise<ConvertResult> {
-    while (true) {
-        const status = await getConvertStatus(statusUrl)
-        onStatus({ progress: status.progress || 0, step: status.step || "processing", status: status.status })
-
-        if (status.status === "done" && status.result_url) return getConvertResult(status.result_url)
-        if (status.status === "error") throw new Error(status.error_detail || status.error || "Convert failed")
-        await sleep(POLL_INTERVAL_MS)
-    }
-}
-
-function resetResult(
-    setConvertResult: (value: ConvertResult | null) => void,
-    setNotes: (value: KaraokeNote[]) => void,
-    setProgress: (value: ConvertProgress) => void,
-) {
-    setConvertResult(null)
-    setNotes([])
-    setProgress(DEFAULT_PROGRESS)
-}
-
-function buildAnalysis(notes: KaraokeNote[], result: ConvertResult | null) {
-    const midiValues = notes.map((note) => note.midi)
-    const minMidi = midiValues.length ? Math.min(...midiValues) : null
-    const maxMidi = midiValues.length ? Math.max(...midiValues) : null
-    const duration = typeof result?.metadata.duration === "number" ? result.metadata.duration : null
-    const segments = Array.isArray(result?.metadata.segments) ? result.metadata.segments.length : 0
-
-    return [
-        { label: "Duration", value: formatDuration(duration) },
-        { label: "Notes", value: String(notes.length) },
-        { label: "Range", value: minMidi == null || maxMidi == null ? "--" : `${noteName(minMidi)} - ${noteName(maxMidi)}` },
-        { label: "Segments", value: String(segments) },
-    ]
-}
-
-function drawPreview(canvas: HTMLCanvasElement | null, notes: KaraokeNote[]) {
-    if (!canvas) return
-    const rect = canvas.getBoundingClientRect()
-    const ratio = window.devicePixelRatio || 1
-    canvas.width = Math.max(1, Math.floor(rect.width * ratio))
-    canvas.height = Math.max(1, Math.floor(rect.height * ratio))
-
-    const ctx = canvas.getContext("2d")
-    if (!ctx) return
-    ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
-    ctx.clearRect(0, 0, rect.width, rect.height)
-    ctx.fillStyle = "#0f172a"
-    ctx.fillRect(0, 0, rect.width, rect.height)
-
-    if (notes.length === 0) {
-        ctx.fillStyle = "#64748b"
-        ctx.textAlign = "center"
-        ctx.font = "14px sans-serif"
-        ctx.fillText("MIDI preview se hien thi sau khi convert", rect.width / 2, rect.height / 2)
-        return
-    }
-
-    const visible = notes.slice(0, 700)
-    const maxEnd = Math.max(...visible.map((note) => note.end), 1)
-    const minMidi = Math.min(...visible.map((note) => note.midi), 48)
-    const maxMidi = Math.max(...visible.map((note) => note.midi), 84)
-    const midiRange = Math.max(1, maxMidi - minMidi)
-
-    ctx.strokeStyle = "#1e293b"
-    ctx.lineWidth = 1
-    for (let i = 0; i <= 5; i += 1) {
-        const y = (rect.height / 5) * i
-        ctx.beginPath()
-        ctx.moveTo(0, y)
-        ctx.lineTo(rect.width, y)
-        ctx.stroke()
-    }
-
-    for (const note of visible) {
-        const x = (note.start / maxEnd) * rect.width
-        const width = Math.max(2, (note.duration / maxEnd) * rect.width)
-        const y = rect.height - ((note.midi - minMidi) / midiRange) * rect.height
-        ctx.fillStyle = "#8b5cf6"
-        ctx.fillRect(x, Math.max(2, y - 4), width, 7)
-    }
-}
-
-function noteName(midi: number) {
-    const names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
-    const rounded = Math.round(midi)
-    return `${names[((rounded % 12) + 12) % 12]}${Math.floor(rounded / 12) - 1}`
-}
-
-function sleep(ms: number) {
-    return new Promise((resolve) => window.setTimeout(resolve, ms))
-}
-
-function errorMessage(err: unknown) {
-    return err instanceof Error ? err.message : String(err)
-}

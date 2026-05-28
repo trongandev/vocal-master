@@ -31,7 +31,7 @@ export default function Login() {
   };
 
   const benefits = [
-    { icon: UploadCloud, title: "Tải lên Sheet nhạc", desc: "Thêm bài hát mới bằng file pdf/ảnh." },
+    { icon: UploadCloud, title: "Tách Beat & Giọng hát bằng AI", desc: "Tạo bài hát dạng Karaoke từ link Youtube hoặc File Audio/Video." },
     { icon: History, title: "Lưu lịch sử luyện tập", desc: "Nghe lại và theo dõi sự tiến bộ." },
     { icon: Trophy, title: "Tham gia Bảng xếp hạng", desc: "So tài cùng cộng đồng." }
   ];

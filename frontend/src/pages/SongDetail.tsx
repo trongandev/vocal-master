@@ -1,12 +1,75 @@
 import { useParams, Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Mic2, ArrowLeft, Trophy, PlayCircle, BarChart2 } from 'lucide-react';
+import { Mic2, ArrowLeft, Trophy, PlayCircle, BarChart2, Loader2, SearchX } from 'lucide-react';
 import { Button } from '../components/ui/button';
-import { MOCK_SONGS, MOCK_LEADERBOARD } from '../data/mockData';
+import { MOCK_LEADERBOARD } from '../data/mockData';
+import { db } from '../lib/firebase';
+import { doc, getDoc } from 'firebase/firestore';
+
+interface FirebaseSong {
+  id: string;
+  title: string;
+  artist: string;
+  thumbnail?: string;
+  genre?: string;
+  difficulty?: string;
+  plays?: number;
+  highestScore?: number;
+}
 
 export default function SongDetail() {
   const { id } = useParams();
-  const song = MOCK_SONGS.find(s => s.id === id) || MOCK_SONGS[0];
+  const [song, setSong] = useState<FirebaseSong | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchSong = async () => {
+      if (!id) return;
+      try {
+        const docRef = doc(db, 'songs', id);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          setSong({ id: docSnap.id, ...docSnap.data() } as FirebaseSong);
+        } else {
+          setSong(null);
+        }
+      } catch (error) {
+        console.error("Lỗi khi tải thông tin bài hát:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchSong();
+  }, [id]);
+
+  if (isLoading) {
+    return (
+      <div className="pb-16 pt-32 flex flex-col items-center justify-center text-slate-500">
+        <Loader2 className="w-8 h-8 animate-spin text-violet-500 mb-4" />
+        <p>Đang tải thông tin bài hát...</p>
+      </div>
+    );
+  }
+
+  if (!song) {
+    return (
+      <div className="pb-16 pt-32 flex flex-col items-center justify-center text-slate-500">
+        <SearchX className="w-12 h-12 text-slate-600 mb-4" />
+        <p className="text-xl font-medium text-white mb-2">Không tìm thấy bài hát</p>
+        <p className="mb-6">Bài hát này có thể đã bị xóa hoặc không tồn tại.</p>
+        <Link to="/community">
+          <Button className="bg-violet-600 hover:bg-violet-500 text-white">Quay lại cộng đồng</Button>
+        </Link>
+      </div>
+    );
+  }
+
+  const genre = song.genre || 'Khác';
+  const difficulty = song.difficulty || 'Medium';
+  const plays = song.plays || 0;
+  const highestScore = song.highestScore || 0;
+  const thumbnail = song.thumbnail || 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=500&q=80';
 
   return (
     <div className="pb-16 pt-4">
@@ -24,16 +87,16 @@ export default function SongDetail() {
             className="rounded-3xl overflow-hidden shadow-2xl relative"
           >
             <div className="aspect-square relative">
-              <img src={song.coverUrl} alt={song.title} className="w-full h-full object-cover" />
+              <img src={thumbnail} alt={song.title} className="w-full h-full object-cover" />
               <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-900/50 to-transparent" />
               
               <div className="absolute bottom-0 left-0 w-full p-6">
                 <div className="flex gap-2 mb-3">
                   <span className="px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wider bg-violet-600 text-white backdrop-blur-md">
-                    {song.genre}
+                    {genre}
                   </span>
                   <span className="px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wider bg-slate-800 text-slate-200 backdrop-blur-md border border-slate-700">
-                    Độ khó: {song.difficulty}
+                    Độ khó: {difficulty}
                   </span>
                 </div>
                 <h1 className="text-3xl font-extrabold text-white mb-1 leading-tight">{song.title}</h1>
@@ -42,20 +105,22 @@ export default function SongDetail() {
             </div>
           </motion.div>
 
-          <Button className="w-full h-14 text-lg font-bold bg-white text-slate-900 hover:bg-slate-200 shadow-[0_0_20px_rgba(255,255,255,0.2)]">
-            <Mic2 className="mr-2 w-5 h-5" />
-            Bắt đầu hát (Cần Đăng Nhập)
-          </Button>
+          <Link to={`/play/${song.id}`}>
+            <Button className="w-full h-14 text-lg font-bold bg-white text-slate-900 hover:bg-slate-200 shadow-[0_0_20px_rgba(255,255,255,0.2)]">
+              <Mic2 className="mr-2 w-5 h-5" />
+              Bắt đầu hát
+            </Button>
+          </Link>
 
           <div className="grid grid-cols-2 gap-4">
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col items-center justify-center text-center">
               <PlayCircle className="w-6 h-6 text-slate-400 mb-2" />
-              <div className="text-2xl font-bold text-white mb-1">{song.plays.toLocaleString()}</div>
+              <div className="text-2xl font-bold text-white mb-1">{plays.toLocaleString()}</div>
               <div className="text-xs text-slate-500 uppercase font-semibold">Lượt hát</div>
             </div>
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col items-center justify-center text-center">
               <Trophy className="w-6 h-6 text-yellow-400 mb-2" />
-              <div className="text-2xl font-bold text-yellow-400 mb-1">{song.highestScore}</div>
+              <div className="text-2xl font-bold text-yellow-400 mb-1">{highestScore}</div>
               <div className="text-xs text-slate-500 uppercase font-semibold">Kỷ lục Server</div>
             </div>
           </div>
@@ -104,7 +169,7 @@ export default function SongDetail() {
                       <div className="font-semibold text-white">{user.name}</div>
                     </div>
                     <div className="font-bold text-violet-400 text-lg">
-                      {Math.floor(song.highestScore - idx * 1.5)} <span className="text-xs text-slate-500 font-normal">điểm</span>
+                      {Math.floor(highestScore - idx * 1.5)} <span className="text-xs text-slate-500 font-normal">điểm</span>
                     </div>
                   </div>
                 ))}

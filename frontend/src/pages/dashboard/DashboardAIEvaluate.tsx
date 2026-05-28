@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Link } from 'react-router-dom';
-import { Mic, Square, RefreshCw, AudioLines, Sparkles, CheckCircle2, ChevronRight, Play, Activity, Info, Target } from 'lucide-react';
+import { Mic, Square, RefreshCw, AudioLines, Sparkles, CheckCircle2, ChevronRight, Play, Activity, Info, Target, Crown } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { GoogleGenAI } from "@google/genai";
 import { db, auth } from '../../lib/firebase';
-import { collection, addDoc, serverTimestamp, doc, setDoc } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, doc, setDoc, onSnapshot } from 'firebase/firestore';
+import { UpgradeModal } from '../../components/UpgradeModal';
 
 // Initialize Gemini API
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -103,7 +104,9 @@ export default function DashboardAIEvaluate() {
   const [activeNote, setActiveNote] = useState<number | null>(null);
   const [minNote, setMinNote] = useState<number | null>(null);
   const [maxNote, setMaxNote] = useState<number | null>(null);
-  const [targetNote, setTargetNote] = useState<string>('C4'); // Default target
+
+  const [profile, setProfile] = useState<any>(null);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -113,6 +116,17 @@ export default function DashboardAIEvaluate() {
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyzerRef = useRef<AnalyserNode | null>(null);
   const requestRef = useRef<number>();
+
+  useEffect(() => {
+    if (auth.currentUser) {
+       const unsubscribe = onSnapshot(doc(db, 'users', auth.currentUser.uid), (doc) => {
+         if (doc.exists()) {
+           setProfile(doc.data());
+         }
+       });
+       return () => unsubscribe();
+    }
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -130,6 +144,15 @@ export default function DashboardAIEvaluate() {
   };
 
   const startRecording = async () => {
+    if (!profile?.isVip) {
+       const todayString = new Date().toLocaleDateString();
+       const count = profile?.lastEvalDate === todayString ? (profile?.todayEvalsCount || 0) : 0;
+       if (count >= 3) {
+          setShowUpgradeModal(true);
+          return;
+       }
+    }
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
@@ -233,18 +256,17 @@ export default function DashboardAIEvaluate() {
       const vType = minNote !== null && maxNote !== null ? getVocalType(minNote, maxNote) : null;
       const detectedRange = minNote !== null && maxNote !== null ? `${getNoteName(minNote)} - ${getNoteName(maxNote)}` : "Không xác định";
       
-      const promptText = `Bạn là chuyên gia luyện thanh nhạc (Vocal Coach). Phân tích đoạn thu âm giọng hát này.
-      Thông tin kỹ thuật từ hệ thống:
-      - Quãng giọng vừa hát: ${detectedRange}
-      - Loại giọng được phân loại sơ bộ: ${vType ? vType.name : "Chưa xác định"}
-      - Nốt mục tiêu (Key/Target): ${targetNote}
+      const promptText = `Bạn là một Huấn luyện viên Thanh nhạc (Vocal Coach) chuyên nghiệp. Hãy phân tích đoạn thu âm ngắn này.
+      Thông tin kỹ thuật từ hệ thống thu được:
+      - Quãng giọng (Vocal Range) ghi nhận: ${detectedRange}
+      - Phân loại giọng (Voice Type) dự kiến: ${vType ? vType.name : "Chưa xác định"}
       
-      Hãy đánh giá chi tiết về:
-      1) Cao độ (pitch): Có bị phô (flat) hay sắc (sharp) so với nốt mục tiêu ${targetNote} không?
-      2) Nhịp điệu: Có ổn định không?
-      3) Kỹ thuật & Âm sắc: Cách lấy hơi, độ mở khẩu hình (dựa trên âm thanh), và cảm xúc.
+      Hãy cung cấp "Nhận xét chuyên môn" chi tiết nhưng dễ hiểu cho học trò:
+      1) Phân tích Cao độ (Pitch Analysis): Âm thanh phát ra có đúng trọng tâm (on-pitch), bị non (flat - lệch thấp hơn) hay sắc (sharp - lệch cao hơn), có bị rung rinh phô chênh ở đoạn nào không?
+      2) Khớp nhịp & Tiết tấu (Rhythm & Timing): Độ ổn định và phách nhịp.
+      3) Âm sắc & Kỹ thuật (Tone & Technique): Cảm nhận về vị trí âm thanh, hỗ trợ hơi (breath support), độ mở khẩu hình và truyền cảm.
       
-      Trình bày bằng tiếng Việt, thân thiện, mang tính khích lệ nhưng vẫn chuyên môn. Chia thành các gạch đầu dòng rõ ràng. Nếu đây không phải là giọng hát, hãy báo lỗi.`;
+      Trình bày bằng tiếng Việt, mang tính sư phạm, khích lệ người học. Dùng gạch đầu dòng ngắn gọn, rõ ràng. Nếu file âm thanh quá ồn hoặc không phải giọng người, hãy nhắc nhở học viên thu âm lại ở nơi yên tĩnh hơn.`;
 
       const response = await ai.models.generateContent({
         model: "gemini-3.1-pro-preview",
@@ -272,7 +294,6 @@ export default function DashboardAIEvaluate() {
           
           await addDoc(collection(db, 'vocalEvaluations'), {
             userId: auth.currentUser.uid,
-            targetNote,
             minNote: minNote !== null ? getNoteName(minNote) : null,
             maxNote: maxNote !== null ? getNoteName(maxNote) : null,
             vocalType: vType ? vType.name : null,
@@ -282,11 +303,16 @@ export default function DashboardAIEvaluate() {
           });
 
           // Update user profile summary
+          const todayString = new Date().toLocaleDateString();
+          const newCount = profile?.lastEvalDate === todayString ? (profile?.todayEvalsCount || 0) + 1 : 1;
+          
           await setDoc(doc(db, 'users', auth.currentUser.uid), {
             userId: auth.currentUser.uid,
             displayName: auth.currentUser.displayName,
             bestVocalType: vType ? vType.name : null,
             bestVocalRange: userRange,
+            todayEvalsCount: newCount,
+            lastEvalDate: todayString,
             updatedAt: serverTimestamp()
           }, { merge: true });
           
@@ -324,6 +350,12 @@ export default function DashboardAIEvaluate() {
         <p className="text-slate-400 text-lg max-w-2xl mx-auto">
           Thu âm trực tiếp một đoạn điệp khúc hoặc bài hát bạn yêu thích (tối đa 60 giây). AI sẽ lắng nghe và phân tích cao độ, nhịp điệu và âm sắc như một huấn luyện viên thanh nhạc thực thụ.
         </p>
+        {!profile?.isVip && (
+           <p className="text-amber-500 text-sm mt-3 font-semibold">
+              <Crown className="w-4 h-4 inline mr-1 -mt-1"/>
+              Hôm nay bạn đã dùng: {profile?.lastEvalDate === new Date().toLocaleDateString() ? (profile?.todayEvalsCount || 0) : 0}/3 lượt miễn phí
+           </p>
+        )}
       </div>
 
       <div className="bg-slate-900/50 border border-slate-800 rounded-3xl p-8 backdrop-blur-sm shadow-2xl relative overflow-hidden">
@@ -343,29 +375,6 @@ export default function DashboardAIEvaluate() {
                 exit={{ opacity: 0, scale: 0.95 }}
                 className="flex flex-col items-center w-full"
               >
-                <div className="w-full max-w-md bg-slate-950/40 p-6 rounded-2xl border border-slate-800 mb-8">
-                   <h4 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-                      <Target className="w-4 h-4 text-amber-500" />
-                      Thiết lập nốt mục tiêu
-                   </h4>
-                   <div className="grid grid-cols-4 gap-2">
-                      {['C4', 'E4', 'G4', 'B4', 'C5', 'E5', 'G5', 'A5'].map((note) => (
-                         <button
-                           key={note}
-                           onClick={() => setTargetNote(note)}
-                           className={`py-2 rounded-lg text-sm font-bold transition-all ${
-                              targetNote === note 
-                                ? 'bg-amber-500 text-slate-950 shadow-[0_0_15px_rgba(245,158,11,0.4)]' 
-                                : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                           }`}
-                         >
-                            {note}
-                         </button>
-                      ))}
-                   </div>
-                   <p className="text-[10px] text-slate-500 mt-4 italic">Chọn nốt cao nhất hoặc chủ đạo trong đoạn bạn định hát.</p>
-                </div>
-
                 <div className="w-32 h-32 rounded-full bg-slate-800/80 border-4 border-slate-700 flex items-center justify-center mb-8 shadow-2xl relative group cursor-pointer" onClick={startRecording}>
                   <div className="absolute inset-0 rounded-full bg-violet-500/20 scale-0 group-hover:scale-100 transition-transform duration-300" />
                   <Mic className="w-12 h-12 text-slate-300 group-hover:text-white relative z-10" />
@@ -373,7 +382,7 @@ export default function DashboardAIEvaluate() {
                 
                 <h3 className="text-xl font-bold text-white mb-2">Bắt đầu thu âm giọng hát</h3>
                 <p className="text-slate-400 mb-8 max-w-md text-center">
-                  Hát đoạn mục tiêu của bạn (tối đa 60s). AI sẽ chấm điểm dựa trên nốt {targetNote}.
+                  Thể hiện một đoạn hát ngắn (tối đa 60 giây). Hệ thống AI sẽ tự động đo lường cao độ trực tiếp và phân tích chất lượng giọng hát rộng khắp quãng giọng của bạn.
                 </p>
 
                 <Button 
@@ -395,15 +404,11 @@ export default function DashboardAIEvaluate() {
                 exit={{ opacity: 0, scale: 0.95 }}
                 className="flex flex-col items-center w-full"
               >
-                <div className="grid grid-cols-2 gap-4 w-full max-w-lg mb-8">
-                   <div className="bg-slate-950/50 p-4 rounded-2xl border border-slate-800 text-center">
-                      <span className="text-slate-500 text-xs font-bold uppercase block mb-1">Nốt bài hát (Target)</span>
-                      <span className="text-2xl font-black text-amber-500">{targetNote}</span>
-                   </div>
-                   <div className="bg-slate-950/50 p-4 rounded-2xl border border-slate-800 text-center relative overflow-hidden">
+                <div className="w-full max-w-sm mb-8">
+                   <div className="bg-slate-950/50 p-6 rounded-2xl border border-slate-800 text-center relative overflow-hidden">
                       <div className="absolute inset-0 bg-violet-500/5 animate-pulse"></div>
-                      <span className="text-slate-500 text-xs font-bold uppercase block mb-1 relative z-10">Nốt đang hát</span>
-                      <span className="text-2xl font-black text-white relative z-10">
+                      <span className="text-slate-500 text-xs font-bold uppercase block mb-2 relative z-10">Nốt đang hát (Live Pitch)</span>
+                      <span className="text-4xl font-black text-violet-400 relative z-10 block tracking-wider">
                          {activeNote !== null ? getNoteName(activeNote) : '--'}
                       </span>
                    </div>
@@ -478,20 +483,20 @@ export default function DashboardAIEvaluate() {
                     <div className="w-10 h-10 rounded-full bg-violet-600 flex items-center justify-center">
                       <Sparkles className="w-5 h-5 text-white" />
                     </div>
-                    <h2 className="text-2xl font-bold text-white">Kết quả Phân tích từ AI</h2>
+                    <h2 className="text-2xl font-bold text-white">Nhận xét từ Vocal Coach AI</h2>
                   </div>
 
                   {minNote !== null && maxNote !== null && (
                      <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 flex items-center gap-6">
                         <div className="text-center">
-                           <span className="block text-slate-500 text-[10px] font-bold uppercase mb-1">Quãng giọng vừa hát</span>
+                           <span className="block text-slate-500 text-[10px] font-bold uppercase mb-1">Cữ âm sử dụng</span>
                            <span className="text-lg font-bold text-violet-400">
                               {getNoteName(minNote)} - {getNoteName(maxNote)}
                            </span>
                         </div>
                         <div className="w-px h-8 bg-slate-800"></div>
                         <div className="text-center">
-                           <span className="block text-slate-500 text-[10px] font-bold uppercase mb-1">Loại giọng phù hợp</span>
+                           <span className="block text-slate-500 text-[10px] font-bold uppercase mb-1">Dự đoán chất giọng</span>
                            <span className="text-lg font-bold text-amber-500">
                               {getVocalType(minNote, maxNote).name.split(' (')[0]}
                            </span>
@@ -546,6 +551,7 @@ export default function DashboardAIEvaluate() {
           </AnimatePresence>
         </div>
       </div>
+      <UpgradeModal isOpen={showUpgradeModal} onClose={() => setShowUpgradeModal(false)} />
     </div>
   );
 }
