@@ -103,7 +103,7 @@ export default function DashboardFavorites() {
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 opacity-60 group-hover:opacity-100"
                   />
                   <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Link to={`/play/${song.id}`}>
+                    <Link to={`/song/${song.id}`}>
                       <div className="w-14 h-14 rounded-full bg-violet-600/90 text-white flex items-center justify-center shadow-xl hover:bg-violet-500 hover:scale-110 transition-all cursor-pointer backdrop-blur-sm">
                         <Play className="w-6 h-6 ml-1" />
                       </div>

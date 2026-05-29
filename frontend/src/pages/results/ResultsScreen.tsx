@@ -4,9 +4,11 @@ import { motion } from 'motion/react';
 import { ChevronLeft, Share2, RotateCcw, BarChart2, Star, Loader2, Sparkles, AlertCircle } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { auth, db } from '../../lib/firebase';
-import { collection, addDoc, serverTimestamp, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, doc, getDoc, setDoc, updateDoc, query, where, orderBy, limit, getDocs, increment } from 'firebase/firestore';
+import { Target, Crown, Trophy, Clock } from 'lucide-react';
 import { GoogleGenAI, GenerateContentResponse } from '@google/genai';
 import { UpgradeModal } from '../../components/UpgradeModal';
+import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY }); // fallback
 
@@ -24,8 +26,14 @@ export default function ResultsScreen() {
   const [aiFeedback, setAiFeedback] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [profile, setProfile] = useState<any>(null);
+  const [topPlayers, setTopPlayers] = useState<any[]>([]);
+  const [topScores, setTopScores] = useState<any[]>([]);
   const [savedHistoryId, setSavedHistoryId] = useState("");
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [isAuth, setIsAuth] = useState<boolean>(!!auth.currentUser);
+  const [user, setUser] = useState(auth.currentUser);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [hasSynced, setHasSynced] = useState(false);
   const feedbackRequested = useRef(false);
   
   // Dummy generate sub-scores around final score
@@ -33,7 +41,15 @@ export default function ResultsScreen() {
   const rhythmScore = Math.max(0, finalScore - Math.floor(Math.random() * 8));
   const vibratoScore = Math.max(0, finalScore - Math.floor(Math.random() * 15));
 
-  const userName = auth.currentUser?.displayName || "bạn";
+  const userName = user?.displayName || "bạn";
+
+  useEffect(() => {
+     const unsubscribe = auth.onAuthStateChanged((u) => {
+         setIsAuth(!!u);
+         setUser(u);
+     });
+     return () => unsubscribe();
+  }, []);
 
   useEffect(() => {
      // Fetch profile and save history only once
@@ -65,6 +81,39 @@ export default function ResultsScreen() {
                    console.error("Failed to save history", e);
                 }
             }
+         }
+
+         // Fetch top players for this song
+         if (state?.song?.id) {
+             try {
+                const qHardest = query(
+                   collection(db, 'userSongStats'),
+                   where('songId', '==', state.song.id),
+                   orderBy('totalPracticeTime', 'desc'),
+                   limit(5)
+                );
+                const snHardest = await getDocs(qHardest);
+                const players: any[] = [];
+                snHardest.docs.forEach(d => players.push({ id: d.id, ...d.data() }));
+                setTopPlayers(players);
+             } catch (e) {
+                console.error("Failed to fetch top practice players", e);
+             }
+
+             try {
+                const qScores = query(
+                   collection(db, 'userSongStats'),
+                   where('songId', '==', state.song.id),
+                   orderBy('maxScore', 'desc'),
+                   limit(5)
+                );
+                const snScores = await getDocs(qScores);
+                const scorers: any[] = [];
+                snScores.docs.forEach(d => scorers.push({ id: d.id, ...d.data() }));
+                setTopScores(scorers);
+             } catch (e) {
+                console.error("Failed to fetch top score players", e);
+             }
          }
 
          // Auto feedback for VIP if sung > 60s and has voice
@@ -162,6 +211,55 @@ export default function ResultsScreen() {
     return "Cố gắng lên";
   };
 
+  const handleLogin = async () => {
+    const provider = new GoogleAuthProvider();
+    try {
+      await signInWithPopup(auth, provider);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleSyncScore = async () => {
+    if (!auth.currentUser || !state?.song?.id || hasSynced) return;
+    setIsSyncing(true);
+    try {
+        const id = state.song.id;
+        const userStatRef = doc(db, 'userSongStats', `${auth.currentUser.uid}_${id}`);
+        const statSnap = await getDoc(userStatRef);
+        const currentMaxScore = statSnap.exists() ? (statSnap.data().maxScore || 0) : 0;
+        const newMaxScore = Math.max(currentMaxScore, finalScore);
+
+        await setDoc(userStatRef, {
+            userId: auth.currentUser.uid,
+            songId: id,
+            displayName: auth.currentUser.displayName || auth.currentUser.email?.split('@')[0] || 'Unknown',
+            photoURL: auth.currentUser.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${auth.currentUser.uid}`,
+            totalPracticeTime: increment(duration), 
+            lastPracticed: new Date(),
+            maxScore: newMaxScore
+        }, { merge: true });
+        
+        // Let's also save the history since it wasn't saved before when they were unauth
+        await addDoc(collection(db, 'singingHistory'), {
+           userId: auth.currentUser.uid,
+           songId: id,
+           songTitle: songTitle,
+           songArtist: songArtist,
+           score: finalScore,
+           duration: duration,
+           hasVoice: hasVoice,
+           createdAt: serverTimestamp()
+        });
+
+        setHasSynced(true);
+    } catch (error) {
+        console.error("Sync error:", error);
+    } finally {
+        setIsSyncing(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 font-sans text-slate-50 py-10 px-4">
       <div className="max-w-4xl mx-auto space-y-8">
@@ -227,54 +325,138 @@ export default function ResultsScreen() {
              </div>
           </section>
 
-          {/* Tips for improvement */}
-          <section className="bg-gradient-to-br from-violet-900/40 to-slate-900 border border-violet-500/20 rounded-3xl p-6 shadow-xl relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-violet-500 via-blue-500 to-indigo-500 opacity-50"></div>
-            <div className="flex items-center gap-2 mb-6 border-b border-slate-800 pb-4 relative z-10">
-               <Star className="text-yellow-400" />
-               <h3 className="text-xl font-bold">Nhận xét & Gợi ý từ AI</h3>
-               {isStreaming && <Loader2 className="w-5 h-5 ml-auto text-violet-400 animate-spin" />}
-             </div>
-             
-             <div className="space-y-4 relative z-10 min-h-[150px]">
-               {aiFeedback ? (
-                  <div className="prose prose-invert prose-sm max-w-none">
-                     {aiFeedback.split('\n').map((line, i) => {
-                        if (!line.trim()) return <div key={i} className="h-2" />;
-                        // Handle basic markdown bold mapping if needed, or just plain text
-                        return <p key={i} className="text-slate-300 leading-relaxed m-0 mb-2">{line.replace(/\*\*(.*?)\*\*/g, '$1')}</p>
-                     })}
-                  </div>
-               ) : !feedbackRequested.current ? (
-                  <div className="flex flex-col items-center justify-center py-6 text-center space-y-4">
-                     {duration < 60 || !hasVoice ? (
-                        <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-4 rounded-xl flex items-start gap-3">
-                           <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
-                           <p className="text-sm text-left">Không đủ dữ liệu để AI phân tích. Vui lòng hát đúng giai điệu, có thu âm giọng thật và hát trên 1 phút.</p>
-                        </div>
-                     ) : (
-                        <>
-                           <div className="bg-violet-500/10 border border-violet-500/20 text-violet-200 p-4 rounded-xl text-sm mb-2 text-left">
-                              <p>Tính năng nhận xét bằng AI dành cho gói Miễn phí bị giới hạn 2 lượt/ngày.</p>
-                              {profile?.isVip && <p className="mt-1 font-bold text-amber-400">Bạn là VIP, có 20 lượt nhận xét/ngày!</p>}
+          {/* Sync or AI section */}
+          {!isAuth ? (
+             <section className="bg-gradient-to-br from-slate-900 to-slate-800 border border-slate-700/50 rounded-3xl p-6 shadow-xl flex flex-col items-center justify-center text-center space-y-6">
+                <Target className="w-12 h-12 text-violet-400" />
+                <h3 className="text-xl font-bold">Hãy đăng nhập để đồng bộ điểm!</h3>
+                <p className="text-sm text-slate-400">Đăng nhập để lưu lại lịch sử luyện tập, nhận xét AI và ghi danh trên bảng vàng của hệ thống chúng tôi.</p>
+                <Button 
+                   onClick={handleLogin}
+                   className="bg-white text-slate-900 hover:bg-slate-200 px-8 rounded-full h-12 text-base font-semibold"
+                >
+                   Đăng nhập với Google
+                </Button>
+             </section>
+          ) : !hasSynced && !savedHistoryId ? (
+             <section className="bg-gradient-to-br from-slate-900 to-slate-800 border border-slate-700/50 rounded-3xl p-6 shadow-xl flex flex-col items-center justify-center text-center space-y-6">
+                <Crown className="w-12 h-12 text-amber-400" />
+                <h3 className="text-xl font-bold">Tài khoản chưa đồng bộ</h3>
+                <p className="text-sm text-slate-400">Hãy nhấn đồng bộ ngay để cập nhật điểm số bài hát này lên bảng xếp hạng cộng đồng.</p>
+                <Button 
+                   onClick={handleSyncScore}
+                   disabled={isSyncing}
+                   className="bg-amber-500 hover:bg-amber-600 text-slate-900 px-8 rounded-full h-12 text-base font-bold transition-all hover:scale-105"
+                >
+                   {isSyncing ? <Loader2 className="w-5 h-5 animate-spin" /> : "Đồng bộ điểm ngay"}
+                </Button>
+             </section>
+          ) : (
+             <section className="bg-gradient-to-br from-violet-900/40 to-slate-900 border border-violet-500/20 rounded-3xl p-6 shadow-xl relative overflow-hidden">
+               <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-violet-500 via-blue-500 to-indigo-500 opacity-50"></div>
+               <div className="flex items-center gap-2 mb-6 border-b border-slate-800 pb-4 relative z-10">
+                  <Star className="text-yellow-400" />
+                  <h3 className="text-xl font-bold">Nhận xét & Gợi ý từ AI</h3>
+                  {isStreaming && <Loader2 className="w-5 h-5 ml-auto text-violet-400 animate-spin" />}
+                </div>
+                
+                <div className="space-y-4 relative z-10 min-h-[150px]">
+                  {aiFeedback ? (
+                     <div className="prose prose-invert prose-sm max-w-none">
+                        {aiFeedback.split('\n').map((line, i) => {
+                           if (!line.trim()) return <div key={i} className="h-2" />;
+                           // Handle basic markdown bold mapping if needed, or just plain text
+                           return <p key={i} className="text-slate-300 leading-relaxed m-0 mb-2">{line.replace(/\*\*(.*?)\*\*/g, '$1')}</p>
+                        })}
+                     </div>
+                  ) : !feedbackRequested.current ? (
+                     <div className="flex flex-col items-center justify-center py-6 text-center space-y-4">
+                        {duration < 60 || !hasVoice ? (
+                           <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-4 rounded-xl flex items-start gap-3">
+                              <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+                              <p className="text-sm text-left">Không đủ dữ liệu để AI phân tích. Vui lòng hát đúng giai điệu, có thu âm giọng thật và hát trên 1 phút.</p>
                            </div>
-                           <Button 
-                              onClick={() => handleRequestFeedback(false)}
-                              className="bg-gradient-to-r from-violet-600 to-blue-600 hover:from-violet-500 hover:to-blue-500 text-white font-bold py-6 px-8 rounded-full shadow-[0_0_20px_rgba(139,92,246,0.3)] transition-all hover:scale-105"
-                           >
-                              <Sparkles className="w-5 h-5 mr-2" /> Bắt đầu phân tích AI
-                           </Button>
-                        </>
-                     )}
-                  </div>
-               ) : (
-                  <div className="flex flex-col items-center justify-center py-8 text-slate-500">
-                     <Loader2 className="w-8 h-8 text-violet-500 animate-spin mb-4" />
-                     <p>AI đang phân tích phần trình diễn của bạn...</p>
-                  </div>
-               )}
-             </div>
-          </section>
+                        ) : (
+                           <>
+                              <div className="bg-violet-500/10 border border-violet-500/20 text-violet-200 p-4 rounded-xl text-sm mb-2 text-left">
+                                 <p>Tính năng nhận xét bằng AI dành cho gói Miễn phí bị giới hạn 2 lượt/ngày.</p>
+                                 {profile?.isVip && <p className="mt-1 font-bold text-amber-400">Bạn là VIP, có 20 lượt nhận xét/ngày!</p>}
+                              </div>
+                              <Button 
+                                 onClick={() => handleRequestFeedback(false)}
+                                 className="bg-gradient-to-r from-violet-600 to-blue-600 hover:from-violet-500 hover:to-blue-500 text-white font-bold py-6 px-8 rounded-full shadow-[0_0_20px_rgba(139,92,246,0.3)] transition-all hover:scale-105"
+                              >
+                                 <Sparkles className="w-5 h-5 mr-2" /> Bắt đầu phân tích AI
+                              </Button>
+                           </>
+                        )}
+                     </div>
+                  ) : (
+                     <div className="flex flex-col items-center justify-center py-8 text-slate-500">
+                        <Loader2 className="w-8 h-8 text-violet-500 animate-spin mb-4" />
+                        <p>AI đang phân tích phần trình diễn của bạn...</p>
+                     </div>
+                  )}
+                </div>
+             </section>
+          )}
+        </div>
+
+        {/* Leaderboards for this song */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 w-full">
+           {topScores.length > 0 && (
+              <section className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl w-full">
+                 <div className="flex items-center gap-2 mb-6 border-b border-slate-800 pb-4">
+                    <Star className="text-amber-400 w-6 h-6" />
+                    <h3 className="text-xl font-bold">Top điểm số cao nhất</h3>
+                 </div>
+                 <div className="space-y-4">
+                    {topScores.map((player, idx) => (
+                       <div key={player.id} className="flex items-center justify-between p-4 bg-slate-950/50 border border-slate-800/80 rounded-2xl hover:border-violet-500/30 transition-colors">
+                          <div className="flex items-center gap-3 sm:gap-4">
+                             <div className={`w-8 h-8 rounded-full flex shrink-0 items-center justify-center font-bold text-sm ${idx === 0 ? 'bg-amber-500 text-slate-900' : idx === 1 ? 'bg-slate-300 text-slate-900' : idx === 2 ? 'bg-amber-700 text-white' : 'bg-slate-800 text-slate-400'}`}>
+                                {idx + 1}
+                             </div>
+                             <img src={player.photoURL} alt="avatar" className="w-10 h-10 rounded-full border border-slate-700 shrink-0" />
+                             <div className="font-semibold text-slate-200 truncate max-w-[100px] sm:max-w-[150px]">{player.displayName}</div>
+                             {idx === 0 && <Crown className="w-4 h-4 text-amber-500 shrink-0" />}
+                          </div>
+                          <div className="flex items-center gap-2 text-slate-400 text-sm bg-slate-900 px-3 py-1.5 rounded-full shrink-0">
+                             <Target className="w-4 h-4 text-violet-400" /> 
+                             <span className="font-bold text-amber-400">{player.maxScore?.toLocaleString("en-US") || 0}</span>
+                          </div>
+                       </div>
+                    ))}
+                 </div>
+              </section>
+           )}
+
+           {topPlayers.length > 0 && (
+              <section className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl w-full">
+                 <div className="flex items-center gap-2 mb-6 border-b border-slate-800 pb-4">
+                    <Trophy className="text-amber-400 w-6 h-6" />
+                    <h3 className="text-xl font-bold">Top luyện tập chăm chỉ nhất</h3>
+                 </div>
+                 <div className="space-y-4">
+                    {topPlayers.map((player, idx) => (
+                       <div key={player.id} className="flex items-center justify-between p-4 bg-slate-950/50 border border-slate-800/80 rounded-2xl hover:border-violet-500/30 transition-colors">
+                          <div className="flex items-center gap-3 sm:gap-4">
+                             <div className={`w-8 h-8 rounded-full flex shrink-0 items-center justify-center font-bold text-sm ${idx === 0 ? 'bg-amber-500 text-slate-900' : idx === 1 ? 'bg-slate-300 text-slate-900' : idx === 2 ? 'bg-amber-700 text-white' : 'bg-slate-800 text-slate-400'}`}>
+                                {idx + 1}
+                             </div>
+                             <img src={player.photoURL} alt="avatar" className="w-10 h-10 rounded-full border border-slate-700 shrink-0" />
+                             <div className="font-semibold text-slate-200 truncate max-w-[100px] sm:max-w-[150px]">{player.displayName}</div>
+                             {idx === 0 && <Crown className="w-4 h-4 text-amber-500 shrink-0" />}
+                          </div>
+                          <div className="flex items-center gap-2 text-slate-400 text-sm bg-slate-900 px-3 py-1.5 rounded-full shrink-0">
+                             <Clock className="w-4 h-4 text-violet-400" /> 
+                             <span className="font-medium">{player.totalPracticeTime > 3600 ? `${(Math.floor(player.totalPracticeTime / 3600))} giờ` : `${Math.floor((player.totalPracticeTime || 0) / 60)} phút`}</span>
+                          </div>
+                       </div>
+                    ))}
+                 </div>
+              </section>
+           )}
         </div>
 
       </div>

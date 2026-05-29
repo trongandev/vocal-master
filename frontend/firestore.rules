@@ -74,16 +74,23 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    match /userSongStats/{statId} {
+      allow get: if true;
+      allow list: if true;
+      allow create, update: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow delete: if isAdmin();
+    }
+
     match /songs/{songId} {
-      allow get: if (isSignedIn() && (resource.data.ownerId == request.auth.uid || resource.data.status == 'public')) || isAdmin();
-      allow list: if (isSignedIn() && (resource.data.ownerId == request.auth.uid || resource.data.status == 'public')) || isAdmin();
+      allow get: if resource.data.status == 'public' || (isSignedIn() && resource.data.ownerId == request.auth.uid) || isAdmin();
+      allow list: if resource.data.status == 'public' || (isSignedIn() && resource.data.ownerId == request.auth.uid) || isAdmin();
       allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
       allow delete: if (isSignedIn() && resource.data.ownerId == request.auth.uid) || isAdmin();
-      allow update: if (isSignedIn() && resource.data.ownerId == request.auth.uid) || isAdmin();
+      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['viewCount', 'playCount', 'totalPracticeTime', 'maxScore']) || (isSignedIn() && resource.data.ownerId == request.auth.uid) || isAdmin();
       
       match /noteChunks/{chunkId} {
-         allow get: if isSignedIn();
-         allow list: if isSignedIn();
+         allow get: if true;
+         allow list: if true;
          allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
          allow update: if isSignedIn() && resource.data.ownerId == request.auth.uid;
          allow delete: if isSignedIn() && resource.data.ownerId == request.auth.uid;

@@ -69,6 +69,16 @@ export default function DashboardAdmin() {
     }
   };
 
+  const toggleSongStatus = async (songId: string, currentStatus: string) => {
+    const newStatus = currentStatus === 'hidden' ? 'public' : 'hidden';
+    try {
+      await setDoc(doc(db, 'songs', songId), { status: newStatus }, { merge: true });
+      setSongs(songs.map(s => s.id === songId ? { ...s, status: newStatus } : s));
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const deleteSong = async (songId: string) => {
     if (!window.confirm("Bạn có chắc chắn muốn xóa bài hát này khỏi hệ thống?")) return;
     try {
@@ -168,6 +178,7 @@ export default function DashboardAdmin() {
                        <th className="px-6 py-4 font-medium">Bài hát</th>
                        <th className="px-6 py-4 font-medium">Nghệ sĩ / Kênh</th>
                        <th className="px-6 py-4 font-medium">Owner UID</th>
+                       <th className="px-6 py-4 font-medium text-center">Hiển thị (Public)</th>
                        <th className="px-6 py-4 font-medium text-right">Thao tác</th>
                      </tr>
                    </thead>
@@ -182,6 +193,15 @@ export default function DashboardAdmin() {
                          </td>
                          <td className="px-6 py-4 text-slate-400">{song.artist}</td>
                          <td className="px-6 py-4 text-xs font-mono text-slate-500">{song.ownerId}</td>
+                         <td className="px-6 py-4 text-center">
+                           <button 
+                             onClick={() => toggleSongStatus(song.id, song.status || 'public')}
+                             className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${(song.status || 'public') === 'public' ? 'bg-green-500' : 'bg-slate-700'}`}
+                             title={(song.status || 'public') === 'public' ? 'Đang hiển thị' : 'Đang ẩn'}
+                           >
+                             <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${(song.status || 'public') === 'public' ? 'translate-x-6' : 'translate-x-1'}`} />
+                           </button>
+                         </td>
                          <td className="px-6 py-4 text-right">
                            <button 
                              onClick={() => deleteSong(song.id)}

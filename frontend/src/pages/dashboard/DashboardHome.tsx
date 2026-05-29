@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Plus, Edit2, Play, Lock, Globe, Trash2, Music, Crown, Heart } from 'lucide-react';
+import { Plus, Edit2, Play, Lock, Globe, Trash2, Music, Crown, Heart, Eye } from 'lucide-react';
 import { Button } from '../../components/ui/button';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { db, auth } from '../../lib/firebase';
 import { collection, query, where, getDocs, orderBy, deleteDoc, doc, setDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 
@@ -23,6 +23,7 @@ export default function DashboardHome() {
   const [showVipModal, setShowVipModal] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 9;
+  const navigate = useNavigate();
 
   useEffect(() => {
     const fetchSongs = async (uid: string) => {
@@ -188,7 +189,10 @@ export default function DashboardHome() {
               </thead>
               <tbody className="divide-y divide-slate-800/50">
                 {currentItems.map((song) => (
-                  <tr key={song.id} className="hover:bg-slate-800/20 transition-colors group">
+                  <tr key={song.id} 
+                      onClick={() => navigate(`/song/${song.id}`)}
+                      className="hover:bg-slate-800/20 transition-colors group cursor-pointer"
+                  >
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-4">
                         <div className="w-16 h-10 bg-slate-800 rounded-md overflow-hidden relative">
@@ -216,7 +220,7 @@ export default function DashboardHome() {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <button onClick={() => toggleStatus(song.id, song.status)} className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition-colors hover:brightness-125 cursor-pointer ${
+                      <button onClick={(e) => { e.stopPropagation(); toggleStatus(song.id, song.status); }} className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition-colors hover:brightness-125 cursor-pointer ${
                         song.status === 'public' 
                           ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' 
                           : 'bg-slate-800 text-slate-400 border border-slate-700'
@@ -233,12 +237,12 @@ export default function DashboardHome() {
                     </td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-2">
-                        <Link to={`/play/${song.id}`}>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-green-400 hover:bg-green-400/10 transition-colors tooltip-target" title="Hát ngay">
-                            <Play className="w-4 h-4" />
+                        <Link to={`/song/${song.id}`} onClick={(e) => e.stopPropagation()}>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-green-400 hover:bg-green-400/10 transition-colors tooltip-target" title="Chi tiết">
+                            <Eye className="w-4 h-4" />
                           </Button>
                         </Link>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-red-400 hover:bg-red-400/10 transition-colors" title="Xoá" onClick={() => setDeletingId(song.id)}>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-red-400 hover:bg-red-400/10 transition-colors" title="Xoá" onClick={(e) => { e.stopPropagation(); setDeletingId(song.id); }}>
                           <Trash2 className="w-4 h-4" />
                         </Button>
                       </div>

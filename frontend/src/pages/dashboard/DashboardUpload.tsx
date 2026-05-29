@@ -300,7 +300,7 @@ export default function DashboardUpload() {
     });
     
     // Redirect to play screen
-    navigate(`/play/${songDocRef.id}`);
+    navigate(`/song/${songDocRef.id}`);
   };
 
   const [linkInput, setLinkInput] = useState('');
@@ -495,9 +495,9 @@ export default function DashboardUpload() {
              {existingSongId ? (
                 <div className="bg-amber-500/10 border border-amber-500/30 text-amber-400 text-sm p-4 rounded-xl mb-4 text-center">
                    <p className="font-bold mb-3">Bài hát này đã có sẵn trong thư viện cộng đồng</p>
-                   <Link to={`/play/${existingSongId}`}>
+                   <Link to={`/song/${existingSongId}`}>
                       <Button className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold">
-                         Chuyển đến Hát ngay
+                         Xem chi tiết
                       </Button>
                    </Link>
                    <Button variant="ghost" onClick={() => { setSelectedSong(null); setExistingSongId(null); }} className="w-full mt-2 text-slate-400 hover:text-white">

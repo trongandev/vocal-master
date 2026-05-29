@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Search, Play, Star, Music, Heart } from 'lucide-react';
+import { Search, Play, Star, Music, Heart, Activity, Eye } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { db, auth } from '../../lib/firebase';
 import { collection, query, where, getDocs, limit, orderBy, onSnapshot, setDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 interface Song {
   id: string;
@@ -20,6 +20,7 @@ export default function DashboardCommunity() {
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 9;
+  const navigate = useNavigate();
 
   useEffect(() => {
     const fetchCommunitySongs = async () => {
@@ -38,8 +39,11 @@ export default function DashboardCommunity() {
             title: data.title || 'Unknown Title',
             artist: data.artist || 'Unknown Artist',
             thumbnail: data.thumbnail,
-            duration: data.duration
-          });
+            duration: data.duration,
+            viewCount: data.viewCount || 0,
+            playCount: data.playCount || 0,
+            totalPracticeTime: data.totalPracticeTime || 0
+          } as any);
         });
         
         setSongs(songsList);
@@ -132,7 +136,10 @@ export default function DashboardCommunity() {
         <div className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
             {currentItems.map((song) => (
-              <div key={song.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-4 hover:border-violet-500/30 transition-colors flex gap-4 group">
+              <div key={song.id}
+                   onClick={() => navigate(`/song/${song.id}`)}
+                   className="bg-slate-900 border border-slate-800 rounded-2xl p-4 hover:border-violet-500/30 transition-colors flex gap-4 group cursor-pointer"
+              >
                 <div className="w-24 h-24 rounded-xl overflow-hidden bg-slate-800 shrink-0 relative">
                   {song.thumbnail ? (
                     <img src={song.thumbnail} alt={song.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
@@ -143,7 +150,7 @@ export default function DashboardCommunity() {
                   )}
                   <div className="absolute inset-0 bg-black/10 group-hover:bg-transparent transition-colors" />
                 </div>
-                <div className="flex-1 flex flex-col pt-1 min-w-0 relative">
+                 <div className="flex-1 flex flex-col pt-1 min-w-0 relative">
                    <div className="pr-8">
                      <h3 className="font-bold text-white text-lg leading-tight truncate group-hover:text-violet-300 transition-colors" title={song.title}>
                        {song.title}
@@ -156,14 +163,25 @@ export default function DashboardCommunity() {
                      <Heart className={`w-5 h-5 ${favorites.has(song.id) ? 'fill-rose-500 text-rose-500' : ''}`} />
                    </button>
                    <p className="text-slate-400 text-sm mb-2 truncate" title={song.artist}>{song.artist}</p>
-                  
-                  <div className="mt-auto">
-                    <Link to={`/play/${song.id}`}>
-                      <Button size="sm" variant="outline" className="w-full bg-slate-950 border-slate-700 hover:bg-violet-600 hover:text-white hover:border-violet-600 transition-all text-slate-300 group-hover:border-violet-500/50">
-                         <Play className="w-4 h-4 mr-2" />
-                         Hát ngay
+                   
+                   <div className="mt-1 flex items-center gap-3 text-xs text-slate-500">
+                     <span className="flex items-center gap-1" title="Lượt xem"><Activity className="w-3.5 h-3.5"/> {(song as any).viewCount || 0}</span>
+                     <span className="flex items-center gap-1" title="Lượt hát"><Play className="w-3.5 h-3.5"/> {(song as any).playCount || 0}</span>
+                     <span className="flex items-center gap-1" title="Tổng giờ tập">
+                       <Music className="w-3.5 h-3.5"/> 
+                       {((song as any).totalPracticeTime || 0) > 3600 
+                         ? `${((song as any).totalPracticeTime / 3600).toFixed(1)}h` 
+                         : `${Math.round(((song as any).totalPracticeTime || 0) / 60)}m`}
+                     </span>
+                   </div>
+
+                  <div className="mt-auto pt-3">
+                      <Button size="sm" variant="outline" 
+                              onClick={(e) => { e.stopPropagation(); navigate(`/song/${song.id}`); }}
+                              className="w-full bg-slate-950 border-slate-700 hover:bg-violet-600 hover:text-white hover:border-violet-600 transition-all text-slate-300 group-hover:border-violet-500/50">
+                         <Eye className="w-4 h-4 mr-2" />
+                         Chi tiết
                       </Button>
-                    </Link>
                   </div>
                 </div>
               </div>

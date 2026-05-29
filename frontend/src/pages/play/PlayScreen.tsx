@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Play, Pause, X, Save, Settings2, Mic, Activity, CheckCircle, AlertCircle, Music, Clock } from 'lucide-react';
 import YouTube, { YouTubeProps } from 'react-youtube';
 import { db, auth } from '../../lib/firebase';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, increment, setDoc } from 'firebase/firestore';
 
 const NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 
@@ -78,7 +78,34 @@ export default function PlayScreen() {
   const [song, setSong] = useState<any>(null);
   const targetNotesRef = useRef<any[]>([]);
 
-  const handleFinish = () => {
+  const viewCountIncremented = useRef(false);
+
+  const handleFinish = async () => {
+     if (id && song) {
+         try {
+             await updateDoc(doc(db, 'songs', id), {
+                 playCount: increment(1),
+                 totalPracticeTime: increment(duration)
+             });
+             
+             if (auth.currentUser) {
+                const userStatRef = doc(db, 'userSongStats', `${auth.currentUser.uid}_${id}`);
+                const statSnap = await getDoc(userStatRef);
+                const currentMaxScore = statSnap.exists() ? (statSnap.data().maxScore || 0) : 0;
+                const newMaxScore = Math.max(currentMaxScore, score);
+
+                await setDoc(userStatRef, {
+                   userId: auth.currentUser.uid,
+                   songId: id,
+                   displayName: auth.currentUser.displayName || auth.currentUser.email?.split('@')[0] || 'Unknown',
+                   photoURL: auth.currentUser.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${auth.currentUser.uid}`,
+                   totalPracticeTime: increment(duration),
+                   lastPracticed: new Date(),
+                   maxScore: newMaxScore
+                }, { merge: true });
+             }
+         } catch(e) { console.error(e); }
+     }
      navigate("/results/session-complete", { state: { score, song, duration, hasVoice } });
   };
 
@@ -109,22 +136,41 @@ export default function PlayScreen() {
        try {
            const songSnap = await getDoc(doc(db, 'songs', id));
            if (songSnap.exists()) {
-               setSong(songSnap.data());
-               const chunkSnap = await getDoc(doc(db, `songs/${id}/noteChunks/chunk_0`));
-               if (chunkSnap.exists()) {
-                  const data = chunkSnap.data();
-                  targetNotesRef.current = decodeNotes(data.data);
+               setSong({ id: songSnap.id, ...songSnap.data() });
+               
+               if (!viewCountIncremented.current) {
+                   viewCountIncremented.current = true;
+                   try {
+                       await updateDoc(doc(db, 'songs', id), {
+                           viewCount: increment(1)
+                       });
+                   } catch (e) {
+                       console.error("error updating view count", e);
+                   }
                }
+               
+               try {
+                   const chunkSnap = await getDoc(doc(db, `songs/${id}/noteChunks/chunk_0`));
+                   if (chunkSnap.exists()) {
+                      const data = chunkSnap.data();
+                      targetNotesRef.current = decodeNotes(data.data);
+                   }
+               } catch (e) { console.error("error chunk", e); }
            }
        } catch (e) {
            console.error("Error fetching song:", e);
        }
     };
 
+    // Instead of waiting only for logged in user, fetch immediately.
+    let isMounted = true;
+    const loadData = async () => {
+       await fetchSong();
+    };
+    loadData();
+
     const unsubscribe = auth.onAuthStateChanged((user) => {
-      if (user) {
-        fetchSong();
-      }
+       // if we need to do anything else on auth state change
     });
 
     return () => unsubscribe();
@@ -431,20 +477,20 @@ export default function PlayScreen() {
     <div className="h-screen bg-black text-white font-sans overflow-hidden flex flex-col relative select-none">
       
       {/* Top Navbar */}
-      <header className="absolute top-0 w-full p-4 flex items-center justify-between z-50 bg-gradient-to-b from-black/80 to-transparent">
-        <div className="flex items-center gap-4">
-          <Link to="/dashboard" className="w-10 h-10 rounded-full bg-slate-900/80 border border-slate-700 flex items-center justify-center hover:bg-slate-800 transition-colors">
-            <X className="w-5 h-5 text-slate-300" />
+      <header className="absolute top-0 w-full p-2 sm:p-4 flex items-center justify-between z-50 bg-gradient-to-b from-black/80 to-transparent">
+        <div className="flex items-center gap-2 sm:gap-4">
+          <Link to="/dashboard" className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-slate-900/80 border border-slate-700 flex items-center justify-center hover:bg-slate-800 transition-colors shrink-0">
+            <X className="w-4 h-4 sm:w-5 sm:h-5 text-slate-300" />
           </Link>
-          <div>
-             <h1 className="font-bold text-lg leading-tight">{song ? song.title : 'Đang tải...'}</h1>
-             <p className="text-sm text-slate-400">Karaoke Mode</p>
+          <div className="min-w-0">
+             <h1 className="font-bold text-sm sm:text-lg leading-tight truncate">{song ? song.title : 'Đang tải...'}</h1>
+             <p className="text-xs sm:text-sm text-slate-400 hidden sm:block">Karaoke Mode</p>
           </div>
         </div>
         
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 sm:gap-4 shrink-0">
            {/* Mic Status Visualizer */}
-           <div className="flex items-center gap-3 bg-slate-900/50 border border-slate-700/50 px-3 py-1.5 rounded-full" title="Microphone Level">
+           <div className="hidden sm:flex items-center gap-3 bg-slate-900/50 border border-slate-700/50 px-3 py-1.5 rounded-full" title="Microphone Level">
               <div className={`${isMicReady ? 'text-green-400' : 'text-slate-500'} transition-colors`}>
                  <Mic className="w-4 h-4" />
               </div>
@@ -453,20 +499,20 @@ export default function PlayScreen() {
               </div>
            </div>
 
-           <button onClick={() => setShowSettings(true)} className="p-2 text-slate-400 hover:text-white transition-colors bg-slate-900/50 rounded-full">
-             <Settings2 className="w-5 h-5" />
+           <button onClick={() => setShowSettings(true)} className="p-2 text-slate-400 hover:text-white transition-colors bg-slate-900/50 rounded-full shrink-0">
+             <Settings2 className="w-4 h-4 sm:w-5 sm:h-5" />
            </button>
            
-           <button onClick={handleFinish} className="bg-violet-600 hover:bg-violet-500 text-white px-5 py-2 rounded-full font-bold text-sm flex items-center gap-2 transition-all">
-             <Save className="w-4 h-4" /> Hoàn thành
+           <button onClick={handleFinish} className="bg-violet-600 hover:bg-violet-500 text-white px-3 sm:px-5 py-1.5 sm:py-2 rounded-full font-bold text-xs sm:text-sm flex items-center gap-1 sm:gap-2 transition-all">
+             <Save className="w-3 h-3 sm:w-4 sm:h-4" /> <span className="hidden sm:inline">Hoàn thành</span>
            </button>
         </div>
       </header>
 
       {/* Main Focus: YouTube IFrame */}
-      <main className="flex-1 flex flex-col relative z-10 w-full h-full pt-16 pb-32 items-center justify-center">
+      <main className="flex-1 flex flex-col relative z-10 w-full h-full pt-16 pb-32 sm:pb-40 px-2 sm:px-6 items-center justify-center">
          {song && song.youtubeVideoId ? (
-           <div className="w-full max-w-5xl aspect-video bg-black/50 rounded-2xl overflow-hidden shadow-2xl relative border border-slate-800/80">
+           <div className="w-full max-w-5xl aspect-video bg-black/50 rounded-xl sm:rounded-2xl overflow-hidden shadow-2xl relative border border-slate-800/80">
               <YouTube 
                  videoId={song.youtubeVideoId}
                  opts={{
@@ -488,31 +534,31 @@ export default function PlayScreen() {
               />
               
               {/* Minimalist Stats Overlay */}
-              <div className="absolute top-4 left-4 flex flex-col gap-2 pointer-events-none">
-                 <div className="bg-black/60 backdrop-blur-md border border-slate-700/50 p-3 rounded-2xl flex items-center gap-4">
+              <div className="absolute top-2 left-2 sm:top-4 sm:left-4 flex flex-col gap-2 pointer-events-none scale-75 sm:scale-100 origin-top-left">
+                 <div className="bg-black/60 backdrop-blur-md border border-slate-700/50 p-2 sm:p-3 rounded-xl sm:rounded-2xl flex items-center gap-2 sm:gap-4">
                     <div>
                        <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-0.5">TỔNG ĐIỂM</div>
-                       <div className="text-2xl font-black text-amber-400 font-mono tracking-tighter leading-none">{score.toLocaleString("en-US")}</div>
+                       <div className="text-xl sm:text-2xl font-black text-amber-400 font-mono tracking-tighter leading-none">{score.toLocaleString("en-US")}</div>
                     </div>
-                    <div className="w-px h-8 bg-slate-700/50"></div>
+                    <div className="w-px h-6 sm:h-8 bg-slate-700/50"></div>
                     <div>
                        <div className="text-[10px] text-green-400 font-bold uppercase tracking-widest mb-0.5 flex items-center gap-1"><CheckCircle className="w-3 h-3"/> ĐÚNG</div>
-                       <div className="text-lg font-bold text-white leading-none">{correctHits}</div>
+                       <div className="text-base sm:text-lg font-bold text-white leading-none">{correctHits}</div>
                     </div>
-                    <div className="w-px h-8 bg-slate-700/50"></div>
+                    <div className="w-px h-6 sm:h-8 bg-slate-700/50"></div>
                     <div>
                        <div className="text-[10px] text-red-400 font-bold uppercase tracking-widest mb-0.5 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> LỆCH</div>
-                       <div className="text-lg font-bold text-white leading-none">{flaggedHits}</div>
+                       <div className="text-base sm:text-lg font-bold text-white leading-none">{flaggedHits}</div>
                     </div>
                  </div>
               </div>
 
               {/* Current Pitch Display */}
-              <div className="absolute top-4 right-4 bg-black/60 backdrop-blur-md border border-slate-700/50 px-4 py-2 rounded-2xl flex items-center gap-3 pointer-events-none">
-                 <Music className="w-4 h-4 text-violet-400" />
+              <div className="absolute top-2 right-2 sm:top-4 sm:right-4 bg-black/60 backdrop-blur-md border border-slate-700/50 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl sm:rounded-2xl flex items-center gap-2 sm:gap-3 pointer-events-none scale-75 sm:scale-100 origin-top-right">
+                 <Music className="w-3 h-3 sm:w-4 sm:h-4 text-violet-400" />
                  <div>
-                    <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">NỐT ĐANG HÁT</div>
-                     <div className="text-xl font-bold text-white tracking-widest text-right">{currentNoteName}</div>
+                    <div className="text-[8px] sm:text-[10px] text-slate-400 font-bold uppercase tracking-widest">NỐT ĐANG HÁT</div>
+                     <div className="text-lg sm:text-xl font-bold text-white tracking-widest text-right">{currentNoteName}</div>
                  </div>
               </div>
            </div>
@@ -524,7 +570,7 @@ export default function PlayScreen() {
       </main>
 
       {/* Reference Piano Roll overlay at bottom */}
-      <footer className="absolute bottom-0 w-full h-40 bg-black/90 backdrop-blur-2xl border-t border-slate-800 z-50">
+      <footer className="absolute bottom-0 w-full h-32 sm:h-40 bg-black/90 backdrop-blur-2xl border-t border-slate-800 z-50">
         <div className="absolute top-0 left-4 -mt-3 bg-violet-600 text-white text-[10px] uppercase font-bold px-3 py-1 rounded-full tracking-widest">
            Live Reference Roll
         </div>

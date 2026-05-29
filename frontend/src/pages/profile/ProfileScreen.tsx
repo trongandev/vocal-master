@@ -48,7 +48,7 @@ export default function ProfileScreen() {
                 <div className="aspect-[4/3] w-full rounded-xl overflow-hidden mb-4 relative">
                    <img src={song.coverUrl} className="w-full h-full object-cover opacity-80 group-hover:scale-105 transition-transform" />
                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/40">
-                     <Link to={`/play/${song.id}`}>
+                     <Link to={`/song/${song.id}`}>
                         <div className="w-12 h-12 rounded-full bg-violet-600 flex items-center justify-center text-white"><Play className="ml-1 w-5 h-5"/></div>
                      </Link>
                    </div>
