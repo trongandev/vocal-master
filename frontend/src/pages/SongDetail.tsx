@@ -29,17 +29,28 @@ function decodeNotes(notesBase64: string) {
         const floatArray = new Float32Array(bytes.buffer);
         const notes = [];
         for (let i = 0; i < floatArray.length; i += 3) {
-            notes.push({ start: floatArray[i], duration: floatArray[i+1], pitch: floatArray[i+2] });
+            notes.push({ start: floatArray[i], pitch: Math.round(floatArray[i+1]), duration: floatArray[i+2] });
         }
         return notes;
     } catch(e) { return []; }
 }
 
+function midiToNoteName(midi: number) {
+    if (!midi || midi <= 0) return 'N/A';
+    const notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+    const octave = Math.floor(midi / 12) - 1;
+    return notes[midi % 12] + octave;
+}
+
+function midiToHz(midi: number) {
+    if (!midi || midi <= 0) return 0;
+    return 440 * Math.pow(2, (midi - 69) / 12);
+}
+
 export default function SongDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [song, setSong] = useState<FirebaseSong | null>(null);
-  const [targetNotes, setTargetNotes] = useState<any[]>([]);
+  const [song, setSong] = useState<any>(null);
   const [topScores, setTopScores] = useState<any[]>([]);
   const [topPracticers, setTopPracticers] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -51,17 +62,10 @@ export default function SongDetail() {
         const docRef = doc(db, 'songs', id);
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
-          setSong({ id: docSnap.id, ...docSnap.data() } as FirebaseSong);
+          setSong({ id: docSnap.id, ...docSnap.data() });
         } else {
           setSong(null);
           return;
-        }
-
-        // Fetch chunk_0 for visualization
-        const chunkSnap = await getDoc(doc(db, `songs/${id}/noteChunks/chunk_0`));
-        if (chunkSnap.exists()) {
-            const data = chunkSnap.data();
-            setTargetNotes(decodeNotes(data.data));
         }
 
         // Fetch top scores
@@ -114,52 +118,20 @@ export default function SongDetail() {
   }
 
   const genre = song.genre || 'Khác';
-  const difficulty = song.difficulty || 'Medium';
+  const difficulty = song.difficultyInfo?.label || song.difficulty || 'Trung bình';
+  const difficultyColor = song.difficultyInfo?.colorClass || 'text-slate-200 bg-slate-800 border-slate-700';
   const plays = song.playCount || 0;
   const views = song.viewCount || 0;
   const totalTime = song.totalPracticeTime || 0;
   const thumbnail = song.thumbnail || 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=500&q=80';
 
-  // Calculate binned notes chart
-  const BINS = 30;
-  const maxTime = targetNotes.length > 0 ? targetNotes[targetNotes.length - 1].start + targetNotes[targetNotes.length - 1].duration : 1;
-  const binWidth = maxTime / BINS;
-  const binnedNotes = Array(BINS).fill(0).map(() => [] as number[]);
+  const minPitch = song.pitchMetrics?.minPitch || 0;
+  const maxPitch = song.pitchMetrics?.maxPitch || 0;
+  const modePitch = song.pitchMetrics?.modePitch || 0;
   
-  targetNotes.forEach(note => {
-     if (note.pitch > 0) {
-        const binIdx = Math.min(BINS - 1, Math.floor(note.start / Math.max(0.1, binWidth)));
-        binnedNotes[binIdx].push(note.pitch);
-     }
-  });
-
-  const columnNotes = binnedNotes.map(bin => {
-     if (bin.length === 0) return 0;
-     const counts: Record<number, number> = {};
-     bin.forEach(p => {
-        const rounded = Math.round(p);
-        counts[rounded] = (counts[rounded] || 0) + 1;
-     });
-     let maxCount = 0;
-     let mostFrequentPitch = 0;
-     Object.entries(counts).forEach(([pitchStr, count]) => {
-         if (count > maxCount) {
-             maxCount = count;
-             mostFrequentPitch = Number(pitchStr);
-         }
-     });
-     // We'll use the most frequent pitch as the representative for this time chunk
-     return mostFrequentPitch;
-  });
-
-  let maxPitch = 0, minPitch = 1000;
-  columnNotes.forEach(pitch => {
-      if (pitch > maxPitch) maxPitch = pitch;
-      if (pitch > 0 && pitch < minPitch) minPitch = pitch;
-  });
-  if (minPitch === 1000) minPitch = 0;
-  
-  const pitchRange = Math.max(1, maxPitch - minPitch);
+  const minNote = midiToNoteName(minPitch);
+  const maxNote = midiToNoteName(maxPitch);
+  const modeNote = midiToNoteName(modePitch);
 
   return (
     <div className="pb-16 pt-4 max-w-7xl mx-auto px-4">
@@ -185,7 +157,7 @@ export default function SongDetail() {
                   <span className="px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wider bg-violet-600 text-white backdrop-blur-md">
                     {genre}
                   </span>
-                  <span className="px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wider bg-slate-800 text-slate-200 backdrop-blur-md border border-slate-700">
+                  <span className={`px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wider backdrop-blur-md border ${difficultyColor}`}>
                     Độ khó: {difficulty}
                   </span>
                 </div>
@@ -226,40 +198,78 @@ export default function SongDetail() {
         {/* Right Col: Notes Chart & Leaderboard */}
         <div className="col-span-1 lg:col-span-2 space-y-6">
           
-          {/* Notes Visualization */}
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                <BarChart2 className="text-violet-400" />
-                Bản đồ nốt nhạc
-              </h3>
-              <span className="text-sm text-slate-500">Trích đoạn đầu</span>
+          {/* Vocal Range Profile */}
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 relative overflow-hidden">
+             {/* Decorative background elements */}
+             <div className="absolute top-0 right-0 w-64 h-64 bg-violet-500/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
+             <div className="absolute bottom-0 left-0 w-64 h-64 bg-amber-500/5 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2 pointer-events-none" />
+
+            <div className="flex items-start justify-between mb-8 relative">
+              <div>
+                 <h3 className="text-xl font-bold text-white flex items-center gap-2 mb-1">
+                   <BarChart2 className="text-violet-400" />
+                   Hồ sơ quãng giọng
+                 </h3>
+                 <p className="text-slate-400 text-sm">Quãng giọng yêu cầu để thể hiện bài hát này</p>
+              </div>
+              <div className="bg-slate-800/50 px-4 py-2 rounded-xl border border-slate-700/50 flex flex-col items-end">
+                 <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider mb-0.5">Khoảng cách</span>
+                 <span className="text-sm font-semibold text-white">
+                    {minNote !== 'N/A' && maxNote !== 'N/A' ? `${minNote} - ${maxNote}` : 'Không xác định'}
+                 </span>
+              </div>
             </div>
             
-            <div className="h-48 relative border-b border-slate-700 bg-slate-950/50 rounded-lg overflow-hidden flex items-end px-2 pb-2 gap-1">
-              {columnNotes.some(p => p > 0) ? columnNotes.map((pitch, i) => {
-                 if (pitch === 0) {
-                     return <div key={i} className="flex-1 h-full" />;
-                 }
-                 const y = ((pitch - minPitch) / pitchRange) * 100;
-                 return (
-                    <div 
-                      key={i} 
-                      className="flex-1 bg-violet-500 rounded-sm shadow-[0_0_10px_rgba(139,92,246,0.6)] relative group"
-                      style={{ 
-                         height: `${Math.max(10, y)}%`
-                      }}
-                    >
-                       <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 pointer-events-none">
-                          {Math.round(pitch)} Hz
-                       </div>
-                    </div>
-                 );
-              }) : (
-                 <div className="absolute inset-0 flex items-center justify-center text-slate-500">
-                    Không có dữ liệu nốt nhạc
-                 </div>
-              )}
+            <div className="flex bg-slate-950 rounded-2xl border border-slate-800/50 p-6 relative items-center justify-between">
+                
+                {/* Lowest Note */}
+                <div className="flex flex-col items-center gap-2 relative z-10 w-24">
+                   <div className="w-16 h-16 rounded-full bg-slate-800 border-2 border-slate-700 flex items-center justify-center shadow-lg shadow-slate-950 relative group">
+                      <div className="absolute inset-0 bg-violet-500 rounded-full blur-md opacity-20 group-hover:opacity-40 transition-opacity" />
+                      <span className="text-2xl font-bold font-mono text-white relative z-10">{minNote}</span>
+                   </div>
+                   <div className="text-center">
+                       <div className="text-sm font-semibold text-slate-300 whitespace-nowrap">Thấp nhất</div>
+                       <div className="text-xs text-slate-500 font-mono">{Number.isNaN(minPitch) ? 0 : Math.round(midiToHz(minPitch))} Hz</div>
+                   </div>
+                </div>
+
+                {/* Connecting Line 1 */}
+                <div className="flex-1 h-px bg-gradient-to-r from-slate-700 to-violet-500/50 mx-4 relative z-0" />
+
+                {/* Mode Note */}
+                <div className="flex flex-col items-center gap-2 relative z-10 w-28">
+                   <div className="w-20 h-20 rounded-full bg-slate-800 border-2 border-violet-500/50 flex items-center justify-center shadow-[0_0_15px_rgba(139,92,246,0.3)] relative group">
+                      <div className="absolute inset-0 bg-violet-500 rounded-full blur-md opacity-30 group-hover:opacity-50 transition-opacity" />
+                      <span className="text-3xl font-bold font-mono text-white relative z-10">{modeNote}</span>
+                   </div>
+                   <div className="text-center">
+                       <div className="text-sm font-semibold text-violet-300">Phổ biến nhất</div>
+                       <div className="text-xs text-slate-500 font-mono">{Number.isNaN(modePitch) ? 0 : Math.round(midiToHz(modePitch))} Hz</div>
+                   </div>
+                </div>
+
+                {/* Connecting Line 2 */}
+                <div className="flex-1 h-px bg-gradient-to-r from-violet-500/50 to-slate-700 mx-4 relative z-0" />
+
+                {/* Highest Note */}
+                <div className="flex flex-col items-center gap-2 relative z-10 w-24">
+                   <div className="w-16 h-16 rounded-full bg-slate-800 border-2 border-slate-700 flex items-center justify-center shadow-lg shadow-slate-950 relative group">
+                      <div className="absolute inset-0 bg-amber-500 rounded-full blur-md opacity-20 group-hover:opacity-40 transition-opacity" />
+                      <span className="text-2xl font-bold font-mono text-white relative z-10">{maxNote}</span>
+                   </div>
+                   <div className="text-center">
+                       <div className="text-sm font-semibold text-slate-300 whitespace-nowrap">Cao nhất</div>
+                       <div className="text-xs text-slate-500 font-mono">{Number.isNaN(maxPitch) ? 0 : Math.round(midiToHz(maxPitch))} Hz</div>
+                   </div>
+                </div>
+            </div>
+            
+            <div className="mt-6 flex items-start gap-3 bg-violet-500/10 border border-violet-500/20 p-4 rounded-xl">
+               <Mic2 className="w-5 h-5 text-violet-400 shrink-0 mt-0.5" />
+               <p className="text-sm text-violet-200/80 leading-relaxed text-left">
+                 <strong>Mẹo luyện tập:</strong> Hãy đảm bảo giọng của bạn đã được khởi động kỹ trước khi cố gắng hát những nốt cao nhất của bài hát để tránh tổn thương dây thanh quản.
+               </p>
             </div>
           </div>
 

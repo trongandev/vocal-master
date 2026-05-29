@@ -15,6 +15,16 @@ interface Song {
   videoUrl?: string;
   convertJobId?: string;
   plays?: number;
+  difficulty?: string;
+  difficultyInfo?: { label: string, colorClass: string };
+  pitchMetrics?: { minPitch: number, maxPitch: number, modePitch: number };
+}
+
+function midiToNoteName(midi: number) {
+    if (!midi || midi <= 0) return 'N/A';
+    const notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+    const octave = Math.floor(midi / 12) - 1;
+    return notes[midi % 12] + octave;
 }
 
 export default function Community() {
@@ -194,6 +204,23 @@ export default function Community() {
                     </button>
                     <p className="text-slate-400 text-sm mb-4">{song.artist}</p>
                     
+                    <div className="flex flex-wrap gap-2 mb-4">
+                      {song.difficultyInfo ? (
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${song.difficultyInfo.colorClass}`}>
+                          {song.difficultyInfo.label}
+                        </span>
+                      ) : song.difficulty ? (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-800 text-slate-200 border border-slate-700">
+                          {song.difficulty}
+                        </span>
+                      ) : null}
+                      {song.pitchMetrics && song.pitchMetrics.minPitch > 0 && song.pitchMetrics.maxPitch > 0 && (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-800 text-violet-300 border border-violet-500/30">
+                          {midiToNoteName(song.pitchMetrics.minPitch)} - {midiToNoteName(song.pitchMetrics.maxPitch)}
+                        </span>
+                      )}
+                    </div>
+
                     <div className="flex items-center justify-between text-sm">
                       <div className="text-violet-400 text-xs font-medium px-2 py-1 bg-violet-500/10 rounded-full">
                          Cộng đồng

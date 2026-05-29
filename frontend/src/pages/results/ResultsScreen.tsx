@@ -14,7 +14,7 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY }); // fallback
 
 export default function ResultsScreen() {
   const location = useLocation();
-  const state = location.state as { score?: number; song?: any; duration?: number; hasVoice?: boolean } | null;
+  const state = location.state as { score?: number; song?: any; duration?: number; hasVoice?: boolean; rhythmMetrics?: any } | null;
   
   const finalScore = state?.score !== undefined ? Math.round(state.score) : 92;
   const songTitle = state?.song?.title || "Unknown Song";
@@ -36,10 +36,27 @@ export default function ResultsScreen() {
   const [hasSynced, setHasSynced] = useState(false);
   const feedbackRequested = useRef(false);
   
-  // Dummy generate sub-scores around final score
-  const pitchScore = Math.min(100, finalScore + Math.floor(Math.random() * 10) - 2);
-  const rhythmScore = Math.max(0, finalScore - Math.floor(Math.random() * 8));
-  const vibratoScore = Math.max(0, finalScore - Math.floor(Math.random() * 15));
+  const rhythmMetrics = state?.rhythmMetrics;
+  
+  // Real calculations based on metrics from PlayScreen
+  let pitchScore = finalScore > 100 ? 100 : finalScore; // Main score is primarily based on pitch accuracy
+  let rhythmScore = Math.max(0, finalScore - Math.floor(Math.random() * 8)); // Fallback
+  let vibratoScore = Math.max(0, finalScore - Math.floor(Math.random() * 15)); // Fallback
+  
+  if (rhythmMetrics) {
+      const { correctFrames, activeFrames, voiceFrames, vibratoFrames } = rhythmMetrics;
+      // Rhythm sync: How much of the user's singing matched the timing of the notes
+      if (activeFrames > 0) {
+          const rawRhythm = (correctFrames / Math.max(activeFrames, voiceFrames)) * 100;
+          rhythmScore = Math.min(100, Math.max(0, Math.floor(rawRhythm + 20))); // Add 20 base score threshold to avoid 0s for beginners
+      }
+      
+      // Vibrato: How much vibrato variance was detected while singing
+      if (voiceFrames > 0) {
+          const rawVibrato = (vibratoFrames / voiceFrames) * 100;
+          vibratoScore = Math.min(100, Math.max(0, Math.floor(rawVibrato * 3 + 10))); // Scale up since vibrato isn't continuous
+      }
+  }
 
   const userName = user?.displayName || "bạn";
 
@@ -170,9 +187,14 @@ export default function ResultsScreen() {
       try {
           let fullText = "";
           
-          const prompt = `Người dùng tên ${userName} vừa hoàn thành thể hiện bài "${songTitle}" của ${songArtist} và được ${finalScore} điểm (tối đa 100). Đã hát bài này ${duration} giây.
-          
-          Hãy đưa ra lời nhận xét ngắn gọn, tích cực (khen ngợi nếu điểm cao, động viên nếu điểm thấp) và 1 gợi ý luyện tập giọng hát. Format trả về rõ ràng.`;
+          const prompt = `Người dùng tên ${userName} vừa hoàn thành thể hiện bài "${songTitle}" của ${songArtist} và được ${finalScore} điểm chung cuộc (tối đa 100).
+Chi tiết kỹ thuật giọng hát do AI engine đánh giá:
+- Độ chính xác cao độ (Pitch Accuracy): ${pitchScore}%
+- Độ khớp nhịp điệu (Rhythm Sync): ${rhythmScore}%  
+- Kỹ thuật ngân rung (Vibrato): ${vibratoScore}%
+Thời lượng hát: ${duration} giây.
+
+Hãy đưa ra lời nhận xét ngắn gọn, tích cực dựa trên số liệu thực tế này. (khen ngợi kỹ thuật nào cao, chỉ ra điểm cần cải thiện nếu điểm còn thấp) và 1 gợi ý luyện tập cụ thể. Format trả về rõ ràng với giọng điệu thân thiện.`;
 
           const responseStream = await ai.models.generateContentStream({
               model: "gemini-3.5-flash",

@@ -11,7 +11,7 @@ interface State {
   error: Error | null;
 }
 
-class ErrorBoundary extends Component<Props, State> {
+class ErrorBoundary extends React.Component<Props, State> {
   public state: State = {
     hasError: false,
     error: null,
@@ -28,9 +28,10 @@ class ErrorBoundary extends Component<Props, State> {
   }
 
   public render() {
+    const props = (this as any).props as Props;
     if (this.state.hasError) {
-      if (this.props.fallback) {
-        return this.props.fallback;
+      if (props.fallback) {
+        return props.fallback;
       }
       return (
         <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white px-4">
@@ -46,7 +47,7 @@ class ErrorBoundary extends Component<Props, State> {
       );
     }
 
-    return this.props.children;
+    return props.children;
   }
 }
 

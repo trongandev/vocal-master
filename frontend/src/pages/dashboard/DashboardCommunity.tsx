@@ -11,6 +11,16 @@ interface Song {
   artist: string;
   thumbnail: string;
   duration?: number;
+  difficulty?: string;
+  difficultyInfo?: { label: string, colorClass: string };
+  pitchMetrics?: { minPitch: number, maxPitch: number, modePitch: number };
+}
+
+function midiToNoteName(midi: number) {
+    if (!midi || midi <= 0) return 'N/A';
+    const notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+    const octave = Math.floor(midi / 12) - 1;
+    return notes[midi % 12] + octave;
 }
 
 export default function DashboardCommunity() {
@@ -19,6 +29,7 @@ export default function DashboardCommunity() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [sortBy, setSortBy] = useState('popular');
   const itemsPerPage = 9;
   const navigate = useNavigate();
 
@@ -28,7 +39,7 @@ export default function DashboardCommunity() {
         const q = query(
           collection(db, 'songs'),
           where('status', '==', 'public'),
-          limit(30)
+          limit(100)
         );
         const querySnapshot = await getDocs(q);
         const songsList: Song[] = [];
@@ -42,7 +53,8 @@ export default function DashboardCommunity() {
             duration: data.duration,
             viewCount: data.viewCount || 0,
             playCount: data.playCount || 0,
-            totalPracticeTime: data.totalPracticeTime || 0
+            totalPracticeTime: data.totalPracticeTime || 0,
+            createdAt: data.createdAt?.toMillis ? data.createdAt.toMillis() : 0
           } as any);
         });
         
@@ -94,7 +106,22 @@ export default function DashboardCommunity() {
   const filteredSongs = songs.filter(song => 
     song.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
     song.artist.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  ).sort((a: any, b: any) => {
+    switch (sortBy) {
+      case 'popular':
+        // Calculate a score: 1 play = 2 views? Or just sum them up. Let's just do playCount + viewCount.
+        return ((b.playCount || 0) * 2 + (b.viewCount || 0)) - ((a.playCount || 0) * 2 + (a.viewCount || 0));
+      case 'views':
+        return (b.viewCount || 0) - (a.viewCount || 0);
+      case 'plays':
+        return (b.playCount || 0) - (a.playCount || 0);
+      case 'time':
+        return (b.totalPracticeTime || 0) - (a.totalPracticeTime || 0);
+      case 'newest':
+      default:
+        return (b.createdAt || 0) - (a.createdAt || 0);
+    }
+  });
 
   const totalPages = Math.ceil(filteredSongs.length / itemsPerPage);
   const currentItems = filteredSongs.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
@@ -106,17 +133,31 @@ export default function DashboardCommunity() {
         <p className="text-slate-400">Khám phá và hát những bài hát được chia sẻ từ người dùng khác.</p>
       </div>
 
-      <div className="relative max-w-md">
-        <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-slate-500">
-          <Search className="w-5 h-5" />
+      <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
+        <div className="relative w-full max-w-md">
+          <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-slate-500">
+            <Search className="w-5 h-5" />
+          </div>
+          <input 
+            type="text" 
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Tìm bài hát để luyện tập..." 
+            className="w-full h-12 pl-10 pr-4 bg-slate-900 border border-slate-700 rounded-xl text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500"
+          />
         </div>
-        <input 
-          type="text" 
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          placeholder="Tìm bài hát để luyện tập..." 
-          className="w-full h-12 pl-10 pr-4 bg-slate-900 border border-slate-700 rounded-xl text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500"
-        />
+        
+        <select 
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value)}
+          className="h-12 px-4 bg-slate-900 border border-slate-700 rounded-xl text-slate-300 focus:outline-none focus:ring-2 focus:ring-violet-500 min-w-[200px]"
+        >
+          <option value="popular">Phổ biến nhất</option>
+          <option value="views">Nhiều lượt xem nhất</option>
+          <option value="plays">Nhiều lượt hát nhất</option>
+          <option value="time">Luyện tập nhiều nhất</option>
+          <option value="newest">Mới nhất</option>
+        </select>
       </div>
 
       {isLoading ? (
@@ -164,6 +205,23 @@ export default function DashboardCommunity() {
                    </button>
                    <p className="text-slate-400 text-sm mb-2 truncate" title={song.artist}>{song.artist}</p>
                    
+                   <div className="flex flex-wrap gap-2 mb-2">
+                     {song.difficultyInfo ? (
+                       <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${song.difficultyInfo.colorClass}`}>
+                         {song.difficultyInfo.label}
+                       </span>
+                     ) : song.difficulty ? (
+                       <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-800 text-slate-200 border border-slate-700">
+                         {song.difficulty}
+                       </span>
+                     ) : null}
+                     {song.pitchMetrics && song.pitchMetrics.minPitch > 0 && song.pitchMetrics.maxPitch > 0 && (
+                       <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-800 text-violet-300 border border-violet-500/30">
+                         {midiToNoteName(song.pitchMetrics.minPitch)} - {midiToNoteName(song.pitchMetrics.maxPitch)}
+                       </span>
+                     )}
+                   </div>
+
                    <div className="mt-1 flex items-center gap-3 text-xs text-slate-500">
                      <span className="flex items-center gap-1" title="Lượt xem"><Activity className="w-3.5 h-3.5"/> {(song as any).viewCount || 0}</span>
                      <span className="flex items-center gap-1" title="Lượt hát"><Play className="w-3.5 h-3.5"/> {(song as any).playCount || 0}</span>

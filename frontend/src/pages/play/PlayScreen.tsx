@@ -106,7 +106,7 @@ export default function PlayScreen() {
              }
          } catch(e) { console.error(e); }
      }
-     navigate("/results/session-complete", { state: { score, song, duration, hasVoice } });
+     navigate("/results/session-complete", { state: { score, song, duration, hasVoice, rhythmMetrics } });
   };
 
   const [player, setPlayer] = useState<any>(null);
@@ -126,6 +126,8 @@ export default function PlayScreen() {
   const [correctHits, setCorrectHits] = useState(0);
   const [flaggedHits, setFlaggedHits] = useState(0);
   const [currentNoteName, setCurrentNoteName] = useState<string>('--');
+  
+  const [rhythmMetrics, setRhythmMetrics] = useState({ correctFrames: 0, activeFrames: 0, voiceFrames: 0, vibratoFrames: 0 });
   
   const minMidi = 48; // C3
   const maxMidi = 84; // C6
@@ -200,6 +202,14 @@ export default function PlayScreen() {
     let accumulatedFlagged = flaggedHits;
     let accumulatedDuration = duration;
     let accumulatedHasVoice = hasVoice;
+    
+    // RHYTHM & VIBRATO TRACKING
+    let pitchHistory: number[] = [];
+    let vibratoFrames = 0;
+    let voiceFrames = 0; // Frames where user is singing
+    let activeNoteFrames = 0; // Frames where a note is supposed to be sung
+    let correctTimingFrames = 0; // Frames where user matched the timing of the note
+    
     let lastTime = performance.now();
 
     const startAudio = async () => {
@@ -257,8 +267,33 @@ export default function PlayScreen() {
           const targetNotes = targetNotesRef.current;
           const target = targetNotes.find((n: any) => time >= n.startTime && time <= n.endTime);
           
+          if (target) activeNoteFrames++;
+          
           if (currentUserMidi !== null && currentUserMidi >= minMidi && currentUserMidi <= maxMidi) {
+             voiceFrames++;
+             
+             // Track pitch history for vibrato (capture last 20 frames)
+             pitchHistory.push(currentUserMidi);
+             if (pitchHistory.length > 20) pitchHistory.shift();
+             
+             // Vibrato calculation: Check variance over the recent history
+             // Vibrato typically oscillates slightly (e.g. standard deviation between 0.2 and 1.5)
+             if (pitchHistory.length === 20 && target) {
+                 const sum = pitchHistory.reduce((a, b) => a + b, 0);
+                 const avg = sum / pitchHistory.length;
+                 const variance = pitchHistory.reduce((a, b) => a + Math.pow(b - avg, 2), 0) / pitchHistory.length;
+                 const stdDev = Math.sqrt(variance);
+                 
+                 // If standard deviation is in optimal vibrato range, count it
+                 if (stdDev >= 0.25 && stdDev <= 1.5) {
+                     vibratoFrames++;
+                 }
+             }
+             
              if (target) {
+                // Rhythm timing: user sings when there's an active note
+                correctTimingFrames++;
+                
                 const diff = Math.abs(currentUserMidi - target.midi);
                 if (diff <= 1) {
                    dotColor = '#22c55e'; // Perfect/Great match (Green)
@@ -271,8 +306,12 @@ export default function PlayScreen() {
                    dotColor = '#ef4444'; // Off (Red)
                    if (Math.random() > 0.98) accumulatedFlagged++;
                 }
+             } else {
+                // User is singing when there's no note => rhythm penalty
              }
              trailingDotsRef.current.push({ time, midi: currentUserMidi, color: dotColor });
+          } else {
+             pitchHistory = []; // Reset pitch history on silence
           }
 
           // Cleanup old trails
@@ -288,6 +327,12 @@ export default function PlayScreen() {
              setFlaggedHits(accumulatedFlagged);
              setDuration(accumulatedDuration);
              setHasVoice(accumulatedHasVoice);
+             setRhythmMetrics({
+                correctFrames: correctTimingFrames,
+                activeFrames: activeNoteFrames,
+                voiceFrames: voiceFrames,
+                vibratoFrames: vibratoFrames
+             });
           }
 
           rafId = requestAnimationFrame(loop);

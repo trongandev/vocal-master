@@ -276,6 +276,55 @@ export default function DashboardUpload() {
       index: 0,
       data: result.notes_base64
     });
+
+    // Calculate pitch metrics
+    let minPitch = 20000;
+    let maxPitch = 0;
+    const pitchCounts: Record<number, number> = {};
+    
+    try {
+      const binaryString = atob(result.notes_base64);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+      }
+      const floatArray = new Float32Array(bytes.buffer);
+      for (let i = 0; i < floatArray.length; i += 3) {
+          const pitch = Math.round(floatArray[i+1]);
+          if (pitch > maxPitch) maxPitch = pitch;
+          if (pitch > 0 && pitch < minPitch) minPitch = pitch;
+          if (pitch > 0) {
+              pitchCounts[pitch] = (pitchCounts[pitch] || 0) + 1;
+          }
+      }
+    } catch (e) {
+      console.error("Error parsing base64 notes for metrics:", e);
+    }
+    
+    if (minPitch === 20000) minPitch = 0;
+    
+    let modePitch = 0;
+    let maxCount = 0;
+    Object.entries(pitchCounts).forEach(([pitch, count]) => {
+        if (count > maxCount) {
+            maxCount = count;
+            modePitch = Number(pitch);
+        }
+    });
+
+    // Calculate difficulty (Simple logic based on pitch range)
+    let difficulty = 'Dễ';
+    let difficultyColor = 'text-green-400 bg-green-500/10 border-green-500/20';
+    if (maxPitch > 0 && minPitch > 0) {
+       const rangeOctaves = (maxPitch - minPitch) / 12;
+       if (rangeOctaves >= 2.5) {
+           difficulty = 'Khó';
+           difficultyColor = 'text-rose-400 bg-rose-500/10 border-rose-500/20';
+       } else if (rangeOctaves >= 1.5) {
+           difficulty = 'Trung bình';
+           difficultyColor = 'text-amber-400 bg-amber-500/10 border-amber-500/20';
+       }
+    }
     
     let videoId = pythonSongId; // Usually the backend returns youtube video id as song_id for YT
     if (sourceData && sourceData.video_id) {
@@ -295,6 +344,15 @@ export default function DashboardUpload() {
       convertJobId: jobId,
       noteChunkCount: 1,
       status: 'public',
+      pitchMetrics: {
+         minPitch,
+         maxPitch,
+         modePitch
+      },
+      difficultyInfo: {
+         label: difficulty,
+         colorClass: difficultyColor
+      },
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
     });
