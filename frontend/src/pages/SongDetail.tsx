@@ -220,47 +220,47 @@ export default function SongDetail() {
               </div>
             </div>
             
-            <div className="flex bg-slate-950 rounded-2xl border border-slate-800/50 p-6 relative items-center justify-between">
+            <div className="flex bg-slate-950 rounded-2xl border border-slate-800/50 p-4 sm:p-6 relative items-center justify-between gap-1 sm:gap-4">
                 
                 {/* Lowest Note */}
-                <div className="flex flex-col items-center gap-2 relative z-10 w-24">
-                   <div className="w-16 h-16 rounded-full bg-slate-800 border-2 border-slate-700 flex items-center justify-center shadow-lg shadow-slate-950 relative group">
+                <div className="flex flex-col items-center gap-1.5 sm:gap-2 relative z-10 w-auto flex-1 max-w-[100px]">
+                   <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-slate-800 border-2 border-slate-700 flex items-center justify-center shadow-lg shadow-slate-950 relative group">
                       <div className="absolute inset-0 bg-violet-500 rounded-full blur-md opacity-20 group-hover:opacity-40 transition-opacity" />
-                      <span className="text-2xl font-bold font-mono text-white relative z-10">{minNote}</span>
+                       <span className="text-xl sm:text-2xl font-bold font-mono text-white relative z-10">{minNote}</span>
                    </div>
                    <div className="text-center">
-                       <div className="text-sm font-semibold text-slate-300 whitespace-nowrap">Thấp nhất</div>
-                       <div className="text-xs text-slate-500 font-mono">{Number.isNaN(minPitch) ? 0 : Math.round(midiToHz(minPitch))} Hz</div>
+                       <div className="text-xs sm:text-sm font-semibold text-slate-300 whitespace-nowrap">Thấp nhất</div>
+                       <div className="text-[10px] sm:text-xs text-slate-500 font-mono">{Number.isNaN(minPitch) ? 0 : Math.round(midiToHz(minPitch))} Hz</div>
                    </div>
                 </div>
 
                 {/* Connecting Line 1 */}
-                <div className="flex-1 h-px bg-gradient-to-r from-slate-700 to-violet-500/50 mx-4 relative z-0" />
+                <div className="hidden md:block flex-1 h-px bg-gradient-to-r from-slate-700 to-violet-500/50 mx-4 relative z-0" />
 
                 {/* Mode Note */}
-                <div className="flex flex-col items-center gap-2 relative z-10 w-28">
-                   <div className="w-20 h-20 rounded-full bg-slate-800 border-2 border-violet-500/50 flex items-center justify-center shadow-[0_0_15px_rgba(139,92,246,0.3)] relative group">
+                <div className="flex flex-col items-center gap-1.5 sm:gap-2 relative z-10 w-auto flex-1 max-w-[120px]">
+                   <div className="w-15 h-15 sm:w-20 sm:h-20 rounded-full bg-slate-800 border-2 border-violet-500/50 flex items-center justify-center shadow-[0_0_15px_rgba(139,92,246,0.3)] relative group">
                       <div className="absolute inset-0 bg-violet-500 rounded-full blur-md opacity-30 group-hover:opacity-50 transition-opacity" />
-                      <span className="text-3xl font-bold font-mono text-white relative z-10">{modeNote}</span>
+                       <span className="text-xl sm:text-3xl font-bold font-mono text-white relative z-10">{modeNote}</span>
                    </div>
                    <div className="text-center">
-                       <div className="text-sm font-semibold text-violet-300">Phổ biến nhất</div>
-                       <div className="text-xs text-slate-500 font-mono">{Number.isNaN(modePitch) ? 0 : Math.round(midiToHz(modePitch))} Hz</div>
+                       <div className="text-xs sm:text-sm font-semibold text-violet-300 whitespace-nowrap">Phổ biến</div>
+                       <div className="text-[10px] sm:text-xs text-slate-500 font-mono">{Number.isNaN(modePitch) ? 0 : Math.round(midiToHz(modePitch))} Hz</div>
                    </div>
                 </div>
 
                 {/* Connecting Line 2 */}
-                <div className="flex-1 h-px bg-gradient-to-r from-violet-500/50 to-slate-700 mx-4 relative z-0" />
+                <div className="hidden md:block flex-1 h-px bg-gradient-to-r from-violet-500/50 to-slate-700 mx-4 relative z-0" />
 
                 {/* Highest Note */}
-                <div className="flex flex-col items-center gap-2 relative z-10 w-24">
-                   <div className="w-16 h-16 rounded-full bg-slate-800 border-2 border-slate-700 flex items-center justify-center shadow-lg shadow-slate-950 relative group">
+                <div className="flex flex-col items-center gap-1.5 sm:gap-2 relative z-10 w-auto flex-1 max-w-[100px]">
+                   <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-slate-800 border-2 border-slate-700 flex items-center justify-center shadow-lg shadow-slate-950 relative group">
                       <div className="absolute inset-0 bg-amber-500 rounded-full blur-md opacity-20 group-hover:opacity-40 transition-opacity" />
-                      <span className="text-2xl font-bold font-mono text-white relative z-10">{maxNote}</span>
+                       <span className="text-xl sm:text-2xl font-bold font-mono text-white relative z-10">{maxNote}</span>
                    </div>
                    <div className="text-center">
-                       <div className="text-sm font-semibold text-slate-300 whitespace-nowrap">Cao nhất</div>
-                       <div className="text-xs text-slate-500 font-mono">{Number.isNaN(maxPitch) ? 0 : Math.round(midiToHz(maxPitch))} Hz</div>
+                       <div className="text-xs sm:text-sm font-semibold text-slate-300 whitespace-nowrap">Cao nhất</div>
+                       <div className="text-[10px] sm:text-xs text-slate-500 font-mono">{Number.isNaN(maxPitch) ? 0 : Math.round(midiToHz(maxPitch))} Hz</div>
                    </div>
                 </div>
             </div>
