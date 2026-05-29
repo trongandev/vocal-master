@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useEffect } from 'react';
 import PublicLayout from './layouts/PublicLayout';
 import DashboardLayout from './layouts/DashboardLayout';
 import Home from './pages/Home';
@@ -6,6 +7,8 @@ import Login from './pages/Login';
 import Community from './pages/Community';
 import SongDetail from './pages/SongDetail';
 import Leaderboard from './pages/Leaderboard';
+import ErrorBoundary from './components/ErrorBoundary';
+import { logErrorToFirebase } from './lib/errorLogger';
 
 // Dashboard Pages
 import DashboardHome from './pages/dashboard/DashboardHome';
@@ -36,12 +39,37 @@ import { AuthProvider } from './contexts/AuthContext';
 import VocalRangeTest from './pages/VocalRangeTest';
 
 export default function App() {
+  useEffect(() => {
+    const handleError = (event: ErrorEvent) => {
+      logErrorToFirebase(event.error || new Error(event.message), {
+        filename: event.filename,
+        lineno: event.lineno,
+        colno: event.colno,
+      }, 'window.onerror');
+    };
+
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      // event.reason can be an Error object or string
+      const error = event.reason instanceof Error ? event.reason : new Error(String(event.reason));
+      logErrorToFirebase(error, null, 'unhandledrejection');
+    };
+
+    window.addEventListener('error', handleError);
+    window.addEventListener('unhandledrejection', handleUnhandledRejection);
+
+    return () => {
+      window.removeEventListener('error', handleError);
+      window.removeEventListener('unhandledrejection', handleUnhandledRejection);
+    };
+  }, []);
+
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <Routes>
-        {/* Phase 1: Public Routes */}
-        <Route path="/" element={<PublicLayout />}>
+    <ErrorBoundary>
+      <AuthProvider>
+        <BrowserRouter>
+          <Routes>
+            {/* Phase 1: Public Routes */}
+            <Route path="/" element={<PublicLayout />}>
           <Route index element={<Home />} />
           <Route path="login" element={<Login />} />
           <Route path="community" element={<Community />} />
@@ -76,9 +104,10 @@ export default function App() {
         <Route path="/play/:id" element={<PlayScreen />} />
         <Route path="/results/:sessionId" element={<ResultsScreen />} />
         <Route path="/profile/:userId" element={<ProfileScreen />} />
-      </Routes>
-    </BrowserRouter>
-  </AuthProvider>
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
+    </ErrorBoundary>
   );
 }
 
