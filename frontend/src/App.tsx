@@ -28,6 +28,7 @@ import DashboardRoadmapDetail from './pages/dashboard/DashboardRoadmapDetail';
 import DashboardPronunciation from './pages/dashboard/DashboardPronunciation';
 import DashboardAIEvaluate from './pages/dashboard/DashboardAIEvaluate';
 import DashboardAdmin from './pages/dashboard/DashboardAdmin';
+import DashboardQuests from './pages/dashboard/DashboardQuests';
 
 // Fullscreen Pages
 import PlayScreen from './pages/play/PlayScreen';
@@ -89,6 +90,7 @@ export default function App() {
           <Route path="community" element={<DashboardCommunity />} />
           <Route path="roadmap" element={<DashboardRoadmap />} />
           <Route path="roadmap/:weekId" element={<DashboardRoadmapDetail />} />
+          <Route path="quests" element={<DashboardQuests />} />
           <Route path="pronunciation" element={<DashboardPronunciation />} />
           <Route path="ai-evaluate" element={<DashboardAIEvaluate />} />
           <Route path="history" element={<DashboardHistory />} />

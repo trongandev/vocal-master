@@ -51,6 +51,15 @@ class Settings:
     segment_gap_seconds: float = 2.0
     pitch_tolerance_cents: float = 50.0
     timing_tolerance_seconds: float = 0.15
+    voice_bandpass: bool = True
+    voice_bandpass_low_hz: float = 80.0
+    voice_bandpass_high_hz: float = 1100.0
+    voice_bandpass_order: int = 4
+    melody_min_midi: int = 48
+    melody_max_midi: int = 84
+    melody_min_note_duration: float = 0.08
+    melody_max_jump_semitones: int = 12
+    melody_merge_gap_seconds: float = 0.08
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -71,6 +80,15 @@ class Settings:
             segment_gap_seconds=_get_float("SEGMENT_GAP_SECONDS", 2.0),
             pitch_tolerance_cents=_get_float("PITCH_TOLERANCE_CENTS", 50.0),
             timing_tolerance_seconds=_get_float("TIMING_TOLERANCE_SECONDS", 0.15),
+            voice_bandpass=_get_bool("VOICE_BANDPASS", True),
+            voice_bandpass_low_hz=_get_float("VOICE_BANDPASS_LOW_HZ", 80.0),
+            voice_bandpass_high_hz=_get_float("VOICE_BANDPASS_HIGH_HZ", 1100.0),
+            voice_bandpass_order=_get_int("VOICE_BANDPASS_ORDER", 4),
+            melody_min_midi=_get_int("MELODY_MIN_MIDI", 48),
+            melody_max_midi=_get_int("MELODY_MAX_MIDI", 84),
+            melody_min_note_duration=_get_float("MELODY_MIN_NOTE_DURATION", 0.08),
+            melody_max_jump_semitones=_get_int("MELODY_MAX_JUMP_SEMITONES", 12),
+            melody_merge_gap_seconds=_get_float("MELODY_MERGE_GAP_SECONDS", 0.08),
         )
 
 

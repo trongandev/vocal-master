@@ -17,7 +17,8 @@ import {
   Heart,
   Shield,
   Menu,
-  X
+  X,
+  Trophy
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { Button } from '../components/ui/button';
@@ -62,6 +63,7 @@ export default function DashboardLayout() {
     { name: 'Kho bài hát', path: '/dashboard', icon: Home, end: true },
     { name: 'Bài hát yêu thích', path: '/dashboard/favorites', icon: Heart },
     { name: 'Lộ trình luyện tập', path: '/dashboard/roadmap', icon: Target },
+    { name: 'Nhiệm vụ & Vinh danh', path: '/dashboard/quests', icon: Trophy },
     { name: 'Cộng đồng', path: '/dashboard/community', icon: Globe },
     { name: 'Lý thuyết & Kỹ Thuật', path: '/dashboard/theory', icon: GraduationCap },
     { name: 'Khởi động & Khẩu hình', path: '/dashboard/pronunciation', icon: MessageSquareWarning },

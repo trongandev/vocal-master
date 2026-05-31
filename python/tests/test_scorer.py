@@ -5,6 +5,7 @@ from services.note_builder import NoteEvent, midi_to_hz
 from services.pitch_extractor import PitchFrame
 from services.scorer import (
     cents_off,
+    compute_pitch_score,
     compute_timing_score,
     filter_reference_notes,
     reference_hz_at_time,
@@ -15,6 +16,17 @@ from services.scorer import (
 def test_cents_off() -> None:
     assert cents_off(440.0, 440.0) == pytest.approx(0.0)
     assert cents_off(880.0, 440.0) == pytest.approx(1200.0)
+
+
+def test_pitch_score_uses_cents_tolerance_window() -> None:
+    cfg = Settings(vocal_separation=False, pitch_tolerance_cents=50.0)
+    frame_data = [
+        {"t": 0.0, "user_hz": 452.9, "ref_hz": 440.0, "cents_off": 50.0},
+        {"t": 0.1, "user_hz": 427.5, "ref_hz": 440.0, "cents_off": -50.0},
+        {"t": 0.2, "user_hz": 453.2, "ref_hz": 440.0, "cents_off": 51.0},
+    ]
+
+    assert compute_pitch_score(frame_data, cfg) == pytest.approx(200.0 / 3.0)
 
 
 def test_reference_pitch_uses_highest_active_note_for_polyphonic_reference() -> None:

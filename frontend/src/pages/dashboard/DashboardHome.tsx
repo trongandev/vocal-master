@@ -157,6 +157,24 @@ export default function DashboardHome() {
         </Link>
       </div>
 
+      {/* Gamification Nudge Banner */}
+      <div className="bg-gradient-to-r from-violet-900/10 to-blue-900/10 border border-violet-500/15 p-5 rounded-3xl flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xl">
+         <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-slate-900 border border-violet-500/20 rounded-2xl flex items-center justify-center text-2xl shrink-0">
+               👨‍🏫
+            </div>
+            <div>
+               <h4 className="font-bold text-sm text-violet-300">Lớp Học Thầy Nam Đang Chờ Trò</h4>
+               <p className="text-xs text-slate-450 mt-0.5">Vào Lớp Học Thử Thách để thực hành Humming, tích lũy Đồng tiền Dưỡng Thanh và thăng hạng học vị!</p>
+            </div>
+         </div>
+         <Link to="/dashboard/quests">
+            <Button size="sm" className="bg-violet-600 hover:bg-violet-500 text-white font-bold px-5 py-2 shrink-0">
+               Vào Phòng Luyện
+            </Button>
+         </Link>
+      </div>
+
       <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl">
         <div className="overflow-x-auto min-h-[300px]">
           {isLoading ? (

@@ -68,6 +68,13 @@ service cloud.firestore {
       allow delete: if (isSignedIn() && resource.data.userId == request.auth.uid) || isAdmin();
     }
 
+    match /vocalStats/{userId} {
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
+      allow create, update: if isOwner(userId) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
     match /users/{userId} {
       allow get: if isOwner(userId) || isAdmin();
       allow list: if isAdmin();
@@ -85,6 +92,13 @@ service cloud.firestore {
     match /errorLogs/{logId} {
       allow create: if true;
       allow read: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /leaderboardCache/{cacheId} {
+      allow get: if true;
+      allow list: if true;
+      allow create, update: if isSignedIn();
       allow delete: if isAdmin();
     }
 
