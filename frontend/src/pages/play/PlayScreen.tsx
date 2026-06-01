@@ -507,15 +507,24 @@ export default function PlayScreen() {
       ctx.stroke();
   };
 
-  // Adjust canvas resolution
+  // Adjust canvas resolution dynamically using ResizeObserver
   useEffect(() => {
-     if (canvasRef.current) {
-        const parent = canvasRef.current.parentElement;
-        if (parent) {
-           canvasRef.current.width = parent.clientWidth;
-           canvasRef.current.height = parent.clientHeight;
+     const canvas = canvasRef.current;
+     if (!canvas) return;
+     const parent = canvas.parentElement;
+     if (!parent) return;
+
+     const resizeObserver = new ResizeObserver((entries) => {
+        for (let entry of entries) {
+           canvas.width = entry.contentRect.width;
+           canvas.height = entry.contentRect.height;
         }
-     }
+     });
+
+     resizeObserver.observe(parent);
+     return () => {
+        resizeObserver.disconnect();
+     };
   }, []);
 
   return (

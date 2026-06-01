@@ -8,10 +8,13 @@ from cache.memory_store import store
 from config import settings
 from errors import ServiceError, video_too_long
 from services.audio_metadata import get_audio_duration
+from services.audio_filter import apply_voice_bandpass
 from services.basic_pitch_transcriber import transcribe_audio_to_midi_notes
 from services.downloader import download_youtube_audio
+from services.melody_filter import extract_melody_notes, melody_filter_metadata
 from services.note_builder import notes_to_float32_bytes
 from services.segment_builder import build_segments
+from services.vocal_separator import maybe_separate_vocals
 
 
 logger = logging.getLogger(__name__)
@@ -160,16 +163,29 @@ def _transcribe_and_store_song(
     duration: float,
     source_name: str | None = None,
 ) -> None:
-    transcription = transcribe_audio_to_midi_notes(audio_path, work_dir)
-    notes = transcription.notes
-    notes_bytes = notes_to_float32_bytes(notes)
-    segments = build_segments(notes, settings)
+    separated_path = maybe_separate_vocals(audio_path, work_dir, settings)
+    filtered_audio_path = apply_voice_bandpass(separated_path, work_dir, settings)
+    transcription = transcribe_audio_to_midi_notes(filtered_audio_path, work_dir)
+    raw_notes = transcription.notes
+    melody_notes = extract_melody_notes(raw_notes, settings)
+    notes_bytes = notes_to_float32_bytes(melody_notes)
+    segments = build_segments(melody_notes, settings)
+    transcription_audio = "vocals" if separated_path != audio_path else "original"
     metadata: dict[str, object] = {
         "song_id": song_id,
         "duration": round(float(duration), 3),
-        "total_notes": len(notes),
+        "raw_total_notes": len(raw_notes),
+        "total_notes": len(melody_notes),
         "segments": segments,
         "transcription_engine": "basic_pitch",
+        "transcription_audio": transcription_audio,
+        "voice_bandpass": {
+            "enabled": settings.voice_bandpass,
+            "low_hz": settings.voice_bandpass_low_hz,
+            "high_hz": settings.voice_bandpass_high_hz,
+            "order": settings.voice_bandpass_order,
+        },
+        "melody_filter": melody_filter_metadata(settings),
     }
     if source_name:
         metadata["source_name"] = source_name

@@ -157,6 +157,24 @@ export default function DashboardHome() {
         </Link>
       </div>
 
+      {/* Gamification Nudge Banner */}
+      <div className="bg-gradient-to-r from-violet-900/10 to-blue-900/10 border border-violet-500/15 p-5 rounded-3xl flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xl">
+         <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-slate-900 border border-violet-500/20 rounded-2xl flex items-center justify-center text-2xl shrink-0">
+               👨‍🏫
+            </div>
+            <div>
+               <h4 className="font-bold text-sm text-violet-300">Lớp Học Thầy Nam Đang Chờ Trò</h4>
+               <p className="text-xs text-slate-450 mt-0.5">Vào Lớp Học Thử Thách để thực hành Humming, tích lũy Đồng tiền Dưỡng Thanh và thăng hạng học vị!</p>
+            </div>
+         </div>
+         <Link to="/dashboard/quests">
+            <Button size="sm" className="bg-violet-600 hover:bg-violet-500 text-white font-bold px-5 py-2 shrink-0">
+               Vào Phòng Luyện
+            </Button>
+         </Link>
+      </div>
+
       <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl">
         <div className="overflow-x-auto min-h-[300px]">
           {isLoading ? (
@@ -177,80 +195,145 @@ export default function DashboardHome() {
                </Link>
             </div>
           ) : (
-            <table className="w-full text-left text-sm whitespace-nowrap">
-              <thead className="bg-slate-800/50 text-slate-400 font-medium">
-                <tr>
-                  <th className="px-6 py-4">Bài hát</th>
-                  <th className="px-6 py-4">Trạng thái</th>
-                  <th className="px-6 py-4">Kỷ lục cá nhân</th>
-                  <th className="px-6 py-4">Ngày thêm</th>
-                  <th className="px-6 py-4 text-right">Thao tác</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/50">
-                {currentItems.map((song) => (
-                  <tr key={song.id} 
-                      onClick={() => navigate(`/song/${song.id}`)}
-                      className="hover:bg-slate-800/20 transition-colors group cursor-pointer"
-                  >
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-4">
-                        <div className="w-16 h-10 bg-slate-800 rounded-md overflow-hidden relative">
-                           {song.thumbnail ? (
-                              <img src={song.thumbnail} alt={song.title} className="w-full h-full object-cover" />
-                           ) : (
-                              <div className="w-full h-full flex items-center justify-center">
-                                <Music className="w-4 h-4 text-slate-500" />
-                              </div>
-                           )}
-                           <div className="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-colors" />
-                        </div>
-                        <div>
-                          <div className="font-semibold text-slate-200 max-w-[200px] sm:max-w-[250px] truncate flex items-center gap-2" title={song.title}>
-                             {song.title}
-                             <button
-                               onClick={(e) => toggleFavorite(song.id, e)}
-                               className="text-slate-500 hover:text-rose-500 transition-colors"
-                             >
-                               <Heart className={`w-4 h-4 ${favorites.has(song.id) ? 'fill-rose-500 text-rose-500' : ''}`} />
-                             </button>
+            <>
+              {/* Mobile Card List (Hidden on tablet/desktop) */}
+              <div className="sm:hidden space-y-4 p-4 divide-y divide-slate-800/40">
+                 {currentItems.map((song) => (
+                    <div 
+                       key={song.id} 
+                       onClick={() => navigate(`/song/${song.id}`)}
+                       className="pt-4 first:pt-0 flex flex-col gap-3 group cursor-pointer"
+                    >
+                       <div className="flex items-center gap-4">
+                          <div className="w-16 h-10 bg-slate-800 rounded-md overflow-hidden relative shrink-0">
+                             {song.thumbnail ? (
+                                <img src={song.thumbnail} alt={song.title} className="w-full h-full object-cover" />
+                             ) : (
+                                <div className="w-full h-full flex items-center justify-center">
+                                   <Music className="w-4 h-4 text-slate-500" />
+                                </div>
+                             )}
                           </div>
-                          <div className="text-xs text-slate-500 max-w-[250px] truncate">{song.artist}</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <button onClick={(e) => { e.stopPropagation(); toggleStatus(song.id, song.status); }} className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition-colors hover:brightness-125 cursor-pointer ${
-                        song.status === 'public' 
-                          ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' 
-                          : 'bg-slate-800 text-slate-400 border border-slate-700'
-                      }`}>
-                        {song.status === 'public' ? <Globe className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
-                        {song.status === 'public' ? 'Công khai' : 'Riêng tư'}
-                      </button>
-                    </td>
-                    <td className="px-6 py-4 font-mono text-slate-300">
-                      --
-                    </td>
-                    <td className="px-6 py-4 text-slate-500">
-                      {formatDate(song.createdAt)}
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <Link to={`/song/${song.id}`} onClick={(e) => e.stopPropagation()}>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-green-400 hover:bg-green-400/10 transition-colors tooltip-target" title="Chi tiết">
-                            <Eye className="w-4 h-4" />
-                          </Button>
-                        </Link>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-red-400 hover:bg-red-400/10 transition-colors" title="Xoá" onClick={(e) => { e.stopPropagation(); setDeletingId(song.id); }}>
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </td>
+                          <div className="min-w-0 flex-1">
+                             <div className="font-semibold text-slate-200 truncate flex items-center gap-2">
+                                <span className="truncate text-sm leading-snug">{song.title}</span>
+                             </div>
+                             <div className="text-xs text-slate-500 truncate mt-0.5">{song.artist}</div>
+                          </div>
+                          <button
+                            onClick={(e) => toggleFavorite(song.id, e)}
+                            className="text-slate-500 hover:text-rose-500 transition-colors p-1 shrink-0 bg-slate-800/40 rounded-lg"
+                          >
+                            <Heart className={`w-4 h-4 ${favorites.has(song.id) ? 'fill-rose-500 text-rose-500' : ''}`} />
+                          </button>
+                       </div>
+                       
+                       <div className="flex items-center justify-between pt-2 border-t border-slate-800/40">
+                          <div className="flex items-center gap-3">
+                             <button onClick={(e) => { e.stopPropagation(); toggleStatus(song.id, song.status); }} className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold transition-colors hover:brightness-125 cursor-pointer ${
+                               song.status === 'public' 
+                                 ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' 
+                                 : 'bg-slate-800 text-slate-400 border border-slate-700'
+                             }`}>
+                               {song.status === 'public' ? <Globe className="w-3 h-3" /> : <Lock className="w-3 h-3" />}
+                               {song.status === 'public' ? 'Công khai' : 'Riêng tư'}
+                             </button>
+                             <span className="text-[11px] text-slate-500">
+                               {formatDate(song.createdAt)}
+                             </span>
+                          </div>
+                          
+                          <div className="flex items-center gap-2">
+                             <Link to={`/song/${song.id}`} onClick={(e) => e.stopPropagation()}>
+                               <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-green-400 hover:bg-green-400/10 transition-colors">
+                                 <Eye className="w-4 h-4" />
+                               </Button>
+                             </Link>
+                             <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-red-400 hover:bg-red-400/10 transition-colors" onClick={(e) => { e.stopPropagation(); setDeletingId(song.id); }}>
+                               <Trash2 className="w-4 h-4" />
+                             </Button>
+                          </div>
+                       </div>
+                    </div>
+                 ))}
+              </div>
+
+              {/* Desktop/Tablet Table Layout (Hidden on mobile) */}
+              <table className="hidden sm:table w-full text-left text-sm whitespace-nowrap">
+                <thead className="bg-slate-800/50 text-slate-400 font-medium">
+                  <tr>
+                    <th className="px-6 py-4">Bài hát</th>
+                    <th className="px-6 py-4">Trạng thái</th>
+                    <th className="px-6 py-4">Kỷ lục cá nhân</th>
+                    <th className="px-6 py-4">Ngày thêm</th>
+                    <th className="px-6 py-4 text-right">Thao tác</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-slate-800/50">
+                  {currentItems.map((song) => (
+                    <tr key={song.id} 
+                        onClick={() => navigate(`/song/${song.id}`)}
+                        className="hover:bg-slate-800/20 transition-colors group cursor-pointer"
+                    >
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-4">
+                          <div className="w-16 h-10 bg-slate-800 rounded-md overflow-hidden relative">
+                             {song.thumbnail ? (
+                                <img src={song.thumbnail} alt={song.title} className="w-full h-full object-cover" />
+                             ) : (
+                                <div className="w-full h-full flex items-center justify-center">
+                                  <Music className="w-4 h-4 text-slate-500" />
+                                </div>
+                             )}
+                             <div className="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-colors" />
+                          </div>
+                          <div>
+                            <div className="font-semibold text-slate-200 max-w-[200px] sm:max-w-[250px] truncate flex items-center gap-2" title={song.title}>
+                               {song.title}
+                               <button
+                                 onClick={(e) => toggleFavorite(song.id, e)}
+                                 className="text-slate-500 hover:text-rose-500 transition-colors"
+                               >
+                                 <Heart className={`w-4 h-4 ${favorites.has(song.id) ? 'fill-rose-500 text-rose-500' : ''}`} />
+                               </button>
+                            </div>
+                            <div className="text-xs text-slate-500 max-w-[250px] truncate">{song.artist}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <button onClick={(e) => { e.stopPropagation(); toggleStatus(song.id, song.status); }} className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition-colors hover:brightness-125 cursor-pointer ${
+                          song.status === 'public' 
+                            ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' 
+                            : 'bg-slate-800 text-slate-400 border border-slate-700'
+                        }`}>
+                          {song.status === 'public' ? <Globe className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
+                          {song.status === 'public' ? 'Công khai' : 'Riêng tư'}
+                        </button>
+                      </td>
+                      <td className="px-6 py-4 font-mono text-slate-300">
+                        --
+                      </td>
+                      <td className="px-6 py-4 text-slate-500">
+                        {formatDate(song.createdAt)}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <Link to={`/song/${song.id}`} onClick={(e) => e.stopPropagation()}>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-green-400 hover:bg-green-400/10 transition-colors tooltip-target" title="Chi tiết">
+                              <Eye className="w-4 h-4" />
+                            </Button>
+                          </Link>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-red-400 hover:bg-red-400/10 transition-colors" title="Xoá" onClick={(e) => { e.stopPropagation(); setDeletingId(song.id); }}>
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
           )}
         </div>
         
