@@ -31,8 +31,35 @@ router.post('/login', async (req, res, next) => {
             'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+            clientType: 'CLIENT_TYPE_WEB',
             email: email,
             password: password,
+            returnSecureToken: true,
+        }),
+    })
+    const data = await response.json()
+    if (data.error && data.error.code === 400 && data.error.message === 'EMAIL_NOT_FOUND') {
+        throw new Error('Email không tồn tại')
+    } else if (data.error && data.error.code === 400 && data.error.message === 'INVALID_PASSWORD') {
+        throw new Error('Mật khẩu không đúng')
+    } else {
+        res.json(data)
+    }
+})
+
+router.post('/refresh-token', async (req, res, next) => {
+    const { grant_type, refresh_token } = req.body
+    // Tìm user theo email
+    //check trên hệ thống mindx
+    const api = `https://securetoken.googleapis.com/v1/token?key=AIzaSyAh2Au-mk5ci-hN83RUBqj1fsAmCMdvJx4`
+    const response = await fetch(api, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            grant_type: grant_type,
+            refresh_token: refresh_token,
         }),
     })
     const data = await response.json()
@@ -49,7 +76,6 @@ router.post('/classes', async (req, res, next) => {
     try {
         const { pageIndex = 0, itemsPerPage = 20, teacherId, search, orderBy = 'createdAt_desc' } = req.body
 
-        // Lấy authorization từ frontend
         const authorization = req.headers.authorization
 
         // Cache key should include endpoint, params and authorization to avoid leaking data
@@ -81,8 +107,12 @@ router.post('/classes', async (req, res, next) => {
 
 router.post('/timesheet', async (req, res, next) => {
     try {
-        const { teacherId, startDate, endDate } = req.body
+        let { teacherId, startDate, endDate } = req.body
         const authorization = req.headers.authorization
+
+        if (!authorization) {
+            return res.status(401).json({ error: 'Missing Authorization header' })
+        }
 
         if (!startDate) {
             // lấy ra ngày đầu tiên của tháng hiện tại
