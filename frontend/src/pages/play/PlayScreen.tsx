@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { Play, Pause, X, Save, Settings2, Mic, Activity, CheckCircle, AlertCircle, Music, Clock } from 'lucide-react';
+import { Play, Pause, X, Save, Settings2, Mic, Activity, CheckCircle, AlertCircle, Music, Clock, Eye, EyeOff } from 'lucide-react';
 import YouTube, { YouTubeProps } from 'react-youtube';
 import { db, auth } from '../../lib/firebase';
 import { doc, getDoc, updateDoc, increment, setDoc } from 'firebase/firestore';
@@ -116,6 +116,7 @@ export default function PlayScreen() {
   const [hasVoice, setHasVoice] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [isMicReady, setIsMicReady] = useState(false);
+  const [showReferenceRoll, setShowReferenceRoll] = useState(true);
   
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const trailingDotsRef = useRef<{time: number, midi: number, color: string}[]>([]);
@@ -553,6 +554,9 @@ export default function PlayScreen() {
               </div>
            </div>
 
+           <button onClick={() => setShowReferenceRoll(!showReferenceRoll)} className="p-2 text-slate-400 hover:text-white transition-colors bg-slate-900/50 rounded-full shrink-0" title={showReferenceRoll ? "Ẩn Piano Roll" : "Hiện Piano Roll"}>
+             {showReferenceRoll ? <EyeOff className="w-4 h-4 sm:w-5 sm:h-5" /> : <Eye className="w-4 h-4 sm:w-5 sm:h-5" />}
+           </button>
            <button onClick={() => setShowSettings(true)} className="p-2 text-slate-400 hover:text-white transition-colors bg-slate-900/50 rounded-full shrink-0">
              <Settings2 className="w-4 h-4 sm:w-5 sm:h-5" />
            </button>
@@ -564,57 +568,62 @@ export default function PlayScreen() {
       </header>
 
       {/* Main Focus: YouTube IFrame */}
-      <main className="flex-1 flex flex-col relative z-10 w-full h-full pt-16 pb-32 sm:pb-40 px-2 sm:px-6 items-center justify-center">
+      <main className={`flex-1 flex flex-col relative z-10 w-full pt-16 px-2 sm:px-6 items-center justify-center min-h-0 transition-all duration-300 ${showReferenceRoll ? 'pb-36 sm:pb-44' : 'pb-6 sm:pb-8'}`}>
          {song && song.youtubeVideoId ? (
-           <div className="w-full max-w-5xl aspect-video bg-black/50 rounded-xl sm:rounded-2xl overflow-hidden shadow-2xl relative border border-slate-800/80">
-              <YouTube 
-                 videoId={song.youtubeVideoId}
-                 opts={{
-                    width: '100%',
-                    height: '100%',
-                    playerVars: {
-                       autoplay: 0,
-                       controls: 1,
-                       rel: 0,
-                       showinfo: 0,
-                       modestbranding: 1
-                    }
-                 }}
-                 onReady={onPlayerReady}
-                 onStateChange={onPlayerStateChange}
-                 onEnd={handleFinish}
-                 className="w-full h-full absolute inset-0"
-                 iframeClassName="w-full h-full"
-              />
-              
-              {/* Minimalist Stats Overlay */}
-              <div className="absolute top-2 left-2 sm:top-4 sm:left-4 flex flex-col gap-2 pointer-events-none scale-75 sm:scale-100 origin-top-left">
-                 <div className="bg-black/60 backdrop-blur-md border border-slate-700/50 p-2 sm:p-3 rounded-xl sm:rounded-2xl flex items-center gap-2 sm:gap-4">
-                    <div>
-                       <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-0.5">TỔNG ĐIỂM</div>
-                       <div className="text-xl sm:text-2xl font-black text-amber-400 font-mono tracking-tighter leading-none">{score.toLocaleString("en-US")}</div>
-                    </div>
-                    <div className="w-px h-6 sm:h-8 bg-slate-700/50"></div>
-                    <div>
-                       <div className="text-[10px] text-green-400 font-bold uppercase tracking-widest mb-0.5 flex items-center gap-1"><CheckCircle className="w-3 h-3"/> ĐÚNG</div>
-                       <div className="text-base sm:text-lg font-bold text-white leading-none">{correctHits}</div>
-                    </div>
-                    <div className="w-px h-6 sm:h-8 bg-slate-700/50"></div>
-                    <div>
-                       <div className="text-[10px] text-red-400 font-bold uppercase tracking-widest mb-0.5 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> LỆCH</div>
-                       <div className="text-base sm:text-lg font-bold text-white leading-none">{flaggedHits}</div>
-                    </div>
-                 </div>
-              </div>
+           <div className="w-full max-w-7xl flex-1 flex items-center justify-center min-h-0">
+             <div 
+                className="relative w-full bg-black/50 rounded-xl sm:rounded-2xl overflow-hidden shadow-2xl border border-slate-800/80" 
+                style={{ aspectRatio: '16/9', maxHeight: '100%', maxWidth: '100%' }}
+             >
+               <YouTube 
+                  videoId={song.youtubeVideoId}
+                  opts={{
+                     width: '100%',
+                     height: '100%',
+                     playerVars: {
+                        autoplay: 0,
+                        controls: 1,
+                        rel: 0,
+                        showinfo: 0,
+                        modestbranding: 1
+                     }
+                  }}
+                  onReady={onPlayerReady}
+                  onStateChange={onPlayerStateChange}
+                  onEnd={handleFinish}
+                  className="w-full h-full absolute inset-0"
+                  iframeClassName="w-full h-full"
+               />
+               
+               {/* Minimalist Stats Overlay */}
+               <div className="absolute top-2 left-2 sm:top-4 sm:left-4 flex flex-col gap-2 pointer-events-none scale-75 sm:scale-100 origin-top-left z-10">
+                  <div className="bg-black/60 backdrop-blur-md border border-slate-700/50 p-2 sm:p-3 rounded-xl sm:rounded-2xl flex items-center gap-2 sm:gap-4">
+                     <div>
+                        <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-0.5">TỔNG ĐIỂM</div>
+                        <div className="text-xl sm:text-2xl font-black text-amber-400 font-mono tracking-tighter leading-none">{score.toLocaleString("en-US")}</div>
+                     </div>
+                     <div className="w-px h-6 sm:h-8 bg-slate-700/50"></div>
+                     <div>
+                        <div className="text-[10px] text-green-400 font-bold uppercase tracking-widest mb-0.5 flex items-center gap-1"><CheckCircle className="w-3 h-3"/> ĐÚNG</div>
+                        <div className="text-base sm:text-lg font-bold text-white leading-none">{correctHits}</div>
+                     </div>
+                     <div className="w-px h-6 sm:h-8 bg-slate-700/50"></div>
+                     <div>
+                        <div className="text-[10px] text-red-400 font-bold uppercase tracking-widest mb-0.5 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> LỆCH</div>
+                        <div className="text-base sm:text-lg font-bold text-white leading-none">{flaggedHits}</div>
+                     </div>
+                  </div>
+               </div>
 
-              {/* Current Pitch Display */}
-              <div className="absolute top-2 right-2 sm:top-4 sm:right-4 bg-black/60 backdrop-blur-md border border-slate-700/50 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl sm:rounded-2xl flex items-center gap-2 sm:gap-3 pointer-events-none scale-75 sm:scale-100 origin-top-right">
-                 <Music className="w-3 h-3 sm:w-4 sm:h-4 text-violet-400" />
-                 <div>
-                    <div className="text-[8px] sm:text-[10px] text-slate-400 font-bold uppercase tracking-widest">NỐT ĐANG HÁT</div>
-                     <div className="text-lg sm:text-xl font-bold text-white tracking-widest text-right">{currentNoteName}</div>
-                 </div>
-              </div>
+               {/* Current Pitch Display */}
+               <div className="absolute top-2 right-2 sm:top-4 sm:right-4 bg-black/60 backdrop-blur-md border border-slate-700/50 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl sm:rounded-2xl flex items-center gap-2 sm:gap-3 pointer-events-none scale-75 sm:scale-100 origin-top-right z-10">
+                  <Music className="w-3 h-3 sm:w-4 sm:h-4 text-violet-400" />
+                  <div>
+                     <div className="text-[8px] sm:text-[10px] text-slate-400 font-bold uppercase tracking-widest">NỐT ĐANG HÁT</div>
+                      <div className="text-lg sm:text-xl font-bold text-white tracking-widest text-right">{currentNoteName}</div>
+                  </div>
+               </div>
+            </div>
            </div>
          ) : (
            <div className="w-full max-w-5xl aspect-video bg-slate-900/50 rounded-2xl overflow-hidden shadow-2xl relative border border-slate-800/80 flex items-center justify-center">
@@ -624,17 +633,27 @@ export default function PlayScreen() {
       </main>
 
       {/* Reference Piano Roll overlay at bottom */}
-      <footer className="absolute bottom-0 w-full h-32 sm:h-40 bg-black/90 backdrop-blur-2xl border-t border-slate-800 z-50">
-        <div className="absolute top-0 left-4 -mt-3 bg-violet-600 text-white text-[10px] uppercase font-bold px-3 py-1 rounded-full tracking-widest">
-           Live Reference Roll
-        </div>
-        <div className="w-full h-full relative p-2">
-           <canvas 
-             ref={canvasRef} 
-             className="w-full h-full block rounded-xl outline outline-1 outline-slate-800/50" 
-           />
-        </div>
-      </footer>
+      <AnimatePresence>
+        {showReferenceRoll && (
+          <motion.footer 
+            initial={{ y: "100%" }} 
+            animate={{ y: 0 }} 
+            exit={{ y: "100%" }} 
+            transition={{ type: "spring", stiffness: 300, damping: 30 }}
+            className="absolute bottom-0 w-full h-32 sm:h-40 bg-black/90 backdrop-blur-2xl border-t border-slate-800 z-50"
+          >
+            <div className="absolute top-0 left-4 -mt-3 bg-violet-600 text-white text-[10px] uppercase font-bold px-3 py-1 rounded-full tracking-widest shadow-lg">
+               Live Reference Roll
+            </div>
+            <div className="w-full h-full relative p-2">
+               <canvas 
+                 ref={canvasRef} 
+                 className="w-full h-full block rounded-xl outline outline-1 outline-slate-800/50" 
+               />
+            </div>
+          </motion.footer>
+        )}
+      </AnimatePresence>
 
       {/* Settings Modal */}
       <AnimatePresence>
