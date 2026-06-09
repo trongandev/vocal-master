@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { User, Bell, Crown, Shield, LogOut, Check, X, Star } from 'lucide-react';
+import { User, Bell, Crown, Shield, LogOut, Check, X, Star, Key, HelpCircle, Eye, EyeOff } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { useAuth } from '../../contexts/AuthContext';
 import { auth, db } from '../../lib/firebase';
@@ -16,6 +16,11 @@ export default function DashboardSettings() {
   const [vocalType, setVocalType] = useState('Chưa xác định');
   const [isSaving, setIsSaving] = useState(false);
 
+  // AI API settings state
+  const [apiKey, setApiKey] = useState('');
+  const [geminiModel, setGeminiModel] = useState('gemini-2.5-flash');
+  const [showApiKey, setShowApiKey] = useState(false);
+
   useEffect(() => {
     const fetchProfile = async () => {
       if (user) {
@@ -31,6 +36,12 @@ export default function DashboardSettings() {
       }
     };
     fetchProfile();
+
+    // Load AI config from localStorage
+    const savedKey = localStorage.getItem('gemini_api_key');
+    const savedModel = localStorage.getItem('gemini_model');
+    if (savedKey) setApiKey(savedKey);
+    if (savedModel) setGeminiModel(savedModel);
   }, [user]);
 
   const handleLogout = async () => {
@@ -61,6 +72,16 @@ export default function DashboardSettings() {
     }
   };
 
+  const handleSaveAIConfig = () => {
+    if (apiKey.trim()) {
+      localStorage.setItem('gemini_api_key', apiKey.trim());
+    } else {
+      localStorage.removeItem('gemini_api_key');
+    }
+    localStorage.setItem('gemini_model', geminiModel);
+    alert('Đã cập nhật cấu hình AI (Gemini API) thành công!');
+  };
+
   return (
     <div className="max-w-3xl mx-auto space-y-8 pb-16 relative">
       <div className="flex items-center justify-between">
@@ -73,6 +94,68 @@ export default function DashboardSettings() {
           Đăng xuất
         </Button>
       </div>
+
+      {/* AI Settings Section */}
+      <section className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl relative">
+        <div className="absolute right-0 top-0 w-32 h-32 bg-blue-500/5 rounded-bl-full pointer-events-none" />
+        <div className="p-6 border-b border-slate-800 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+             <Key className="text-blue-400" />
+             <h2 className="text-xl font-bold text-white">Cấu hình AI Cá nhân</h2>
+          </div>
+        </div>
+        <div className="p-6 space-y-6">
+          <div className="bg-blue-900/10 border border-blue-500/20 rounded-2xl p-4 flex items-start gap-3">
+             <HelpCircle className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
+             <div>
+                <h4 className="text-sm font-bold text-blue-300">Nhập mã API Key của Google Gemini</h4>
+                <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                   Hệ thống sử dụng AI Gemini để đánh giá giọng hát. Mỗi ngày bạn có số lượt giới hạn từ hệ thống.
+                   Bằng cách dùng API Key cá nhân, bạn sẽ được <b>mở khoá không giới hạn độ dài thu âm và hoàn toàn miễn phí</b> (API Gemini hiện đang miễn phí sử dụng mức tiêu chuẩn).
+                </p>
+                <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-xs font-bold text-blue-400 hover:text-blue-300 inline-flex items-center gap-1 mt-2">
+                   Lấy API Key tại Google AI Studio ↗
+                </a>
+             </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2 relative">
+              <label className="text-sm font-semibold text-slate-300">Gemini API Key</label>
+              <div className="relative">
+                 <input 
+                    type={showApiKey ? "text" : "password"} 
+                    placeholder="AIzaSy..."
+                    value={apiKey} 
+                    onChange={(e) => setApiKey(e.target.value)} 
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-blue-500 focus:outline-none pr-12 font-mono text-sm" 
+                 />
+                 <button 
+                    type="button" 
+                    onClick={() => setShowApiKey(!showApiKey)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                 >
+                    {showApiKey ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                 </button>
+              </div>
+            </div>
+            
+            <div className="space-y-2">
+               <label className="text-sm font-semibold text-slate-300">Model Đánh giá</label>
+               <select value={geminiModel} onChange={(e) => setGeminiModel(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-blue-500 focus:outline-none appearance-none">
+                  <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+                  <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
+                  <option value="gemini-3.0-flash">Gemini 3.0 Flash</option>
+                  <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro Preview</option>
+               </select>
+            </div>
+          </div>
+          
+          <Button onClick={handleSaveAIConfig} className="bg-blue-600 hover:bg-blue-500 text-white font-bold w-full sm:w-auto">
+            Lưu cấu hình AI
+          </Button>
+        </div>
+      </section>
 
       {/* Profil details */}
       <section className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl">

@@ -45,8 +45,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } else {
              // For existing but missing role
              const data = userSnap.data();
+             const updates: any = {};
              if (currentUser.email === 'trongandev25@gmail.com' && (data.role !== 'admin' || !data.isVip)) {
-                 await setDoc(userRef, { role: 'admin', isVip: true }, { merge: true });
+                 updates.role = 'admin';
+                 updates.isVip = true;
+             }
+             if (!data.email && currentUser.email) updates.email = currentUser.email;
+             if (!data.displayName && currentUser.displayName) updates.displayName = currentUser.displayName;
+             if (!data.photoURL && currentUser.photoURL) updates.photoURL = currentUser.photoURL;
+             
+             if (Object.keys(updates).length > 0) {
+                 await setDoc(userRef, updates, { merge: true });
              }
         }
       }

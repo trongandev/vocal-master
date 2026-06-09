@@ -64,6 +64,7 @@ export default function DashboardLayout() {
     { name: 'Bài hát yêu thích', path: '/dashboard/favorites', icon: Heart },
     { name: 'Lộ trình luyện tập', path: '/dashboard/roadmap', icon: Target },
     { name: 'Nhiệm vụ & Vinh danh', path: '/dashboard/quests', icon: Trophy },
+    { name: 'Bảng xếp hạng', path: '/leaderboard', icon: Crown },
     { name: 'Cộng đồng', path: '/dashboard/community', icon: Globe },
     { name: 'Lý thuyết & Kỹ Thuật', path: '/dashboard/theory', icon: GraduationCap },
     { name: 'Khởi động & Khẩu hình', path: '/dashboard/pronunciation', icon: MessageSquareWarning },

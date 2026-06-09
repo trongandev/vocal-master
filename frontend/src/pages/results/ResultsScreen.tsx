@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { ChevronLeft, Share2, RotateCcw, BarChart2, Star, Loader2, Sparkles, AlertCircle } from 'lucide-react';
+import { ChevronLeft, Share2, RotateCcw, BarChart2, Star, Loader2, Sparkles, AlertCircle, ToggleLeft, ToggleRight, Headphones, Play, Pause, X } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { auth, db } from '../../lib/firebase';
 import { collection, addDoc, serverTimestamp, doc, getDoc, setDoc, updateDoc, query, where, orderBy, limit, getDocs, increment } from 'firebase/firestore';
@@ -10,11 +10,11 @@ import { GoogleGenAI, GenerateContentResponse } from '@google/genai';
 import { UpgradeModal } from '../../components/UpgradeModal';
 import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY }); // fallback
+const defaultAi = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY }); // fallback
 
 export default function ResultsScreen() {
   const location = useLocation();
-  const state = location.state as { score?: number; song?: any; duration?: number; hasVoice?: boolean; rhythmMetrics?: any } | null;
+  const state = location.state as { score?: number; song?: any; duration?: number; hasVoice?: boolean; rhythmMetrics?: any, recordingUrl?: string } | null;
   
   const finalScore = state?.score !== undefined ? Math.round(state.score) : 92;
   const songTitle = state?.song?.title || "Unknown Song";
@@ -36,6 +36,8 @@ export default function ResultsScreen() {
   const [hasSynced, setHasSynced] = useState(false);
   const feedbackRequested = useRef(false);
   
+  const [autoEvaluateAi, setAutoEvaluateAi] = useState(localStorage.getItem('auto_evaluate_ai') === 'true');
+
   const rhythmMetrics = state?.rhythmMetrics;
   
   // Real calculations based on metrics from PlayScreen
@@ -67,6 +69,14 @@ export default function ResultsScreen() {
      });
      return () => unsubscribe();
   }, []);
+
+  const getCustomGenAI = () => {
+    const customKey = localStorage.getItem('gemini_api_key');
+    if (customKey) {
+      return { ai: new GoogleGenAI({ apiKey: customKey }), customModel: localStorage.getItem('gemini_model') || 'gemini-2.5-flash', isCustom: true };
+    }
+    return { ai: defaultAi, customModel: 'gemini-3.5-flash', isCustom: false };
+  };
 
   useEffect(() => {
      // Fetch profile and save history only once
@@ -133,13 +143,14 @@ export default function ResultsScreen() {
              }
          }
 
-         // Auto feedback for VIP if sung > 60s and has voice
-         if (currentProfile?.isVip && duration >= 60 && hasVoice && !feedbackRequested.current) {
+         // Auto feedback
+         if ((currentProfile?.isVip || isCustom) && autoEvaluateAi && duration >= 60 && hasVoice && !feedbackRequested.current) {
             handleRequestFeedback(true, historyId, currentProfile);
          }
      };
 
      initialize();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleRequestFeedback = async (isAuto = false, historyId = savedHistoryId, currentProfile = profile) => {
@@ -152,14 +163,16 @@ export default function ResultsScreen() {
          return;
       }
 
-      if (!currentProfile?.isVip) {
+      const { ai: currentAi, customModel, isCustom } = getCustomGenAI();
+
+      if (!currentProfile?.isVip && !isCustom) {
          const todayString = new Date().toLocaleDateString();
          const count = currentProfile?.lastAiFeedbackDate === todayString ? (currentProfile?.todayAiFeedbackCount || 0) : 0;
          if (count >= 2) {
              setShowUpgradeModal(true);
              return;
          }
-      } else {
+      } else if (currentProfile?.isVip && !isCustom) {
          const todayString = new Date().toLocaleDateString();
          const count = currentProfile?.lastAiFeedbackDate === todayString ? (currentProfile?.todayAiFeedbackCount || 0) : 0;
          if (count >= 20) {
@@ -196,8 +209,8 @@ Thời lượng hát: ${duration} giây.
 
 Hãy đưa ra lời nhận xét ngắn gọn, tích cực dựa trên số liệu thực tế này. (khen ngợi kỹ thuật nào cao, chỉ ra điểm cần cải thiện nếu điểm còn thấp) và 1 gợi ý luyện tập cụ thể. Format trả về rõ ràng với giọng điệu thân thiện.`;
 
-          const responseStream = await ai.models.generateContentStream({
-              model: "gemini-3.5-flash",
+          const responseStream = await currentAi.models.generateContentStream({
+              model: isCustom ? customModel : "gemini-3.5-flash",
               contents: prompt
           });
 
@@ -218,9 +231,13 @@ Hãy đưa ra lời nhận xét ngắn gọn, tích cực dựa trên số liệ
                   console.error("Failed to update history with feedback", e);
               }
           }
-      } catch (error) {
+      } catch (error: any) {
           console.error("AI Streaming error:", error);
-          setAiFeedback("Đã có lỗi xảy ra khi gọi AI nhận xét. Chúc bạn luyện tập tốt!");
+          if (error?.message?.includes('API key') || error?.message?.includes('429') || error?.message?.includes('403')) {
+             setAiFeedback(`Lỗi với API Key cá nhân: ${error.message} \nVui lòng vào Cài đặt để cập nhật API Key mới.`);
+          } else {
+             setAiFeedback("Đã có lỗi xảy ra khi gọi AI nhận xét. Chúc bạn luyện tập tốt! " + error.message);
+          }
       } finally {
           setIsStreaming(false);
       }
@@ -282,6 +299,63 @@ Hãy đưa ra lời nhận xét ngắn gọn, tích cực dựa trên số liệ
     }
   };
 
+  const toggleAutoEvaluate = () => {
+     const nextVal = !autoEvaluateAi;
+     setAutoEvaluateAi(nextVal);
+     localStorage.setItem('auto_evaluate_ai', nextVal ? 'true' : 'false');
+  };
+
+  const { isCustom } = getCustomGenAI();
+
+  const recordingUrl = state?.recordingUrl;
+  const [showAudioPlayer, setShowAudioPlayer] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [audioCurrentTime, setAudioCurrentTime] = useState(0);
+  const [audioDuration, setAudioDuration] = useState(0);
+  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+
+  // Auto clean up recording URL on unmount to avoid memory leaks if we want, but since they might go back and forth maybe keep it until app closes.
+
+  const togglePlayAudio = () => {
+    if (audioRef.current) {
+        if (isPlayingAudio) audioRef.current.pause();
+        else audioRef.current.play();
+    }
+  };
+
+  const handleAudioTimeUpdate = () => {
+    if (audioRef.current) {
+        setAudioCurrentTime(audioRef.current.currentTime);
+        let d = audioRef.current.duration;
+        if (!isFinite(d) || isNaN(d)) {
+            d = state?.duration || 0;
+        }
+        setAudioDuration(d);
+    }
+  };
+
+  const handleSeek = (e: any) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const percent = (e.clientX - rect.left) / rect.width;
+    let d = audioRef.current?.duration;
+    if (!isFinite(d) || isNaN(d)) {
+        d = state?.duration || 0;
+    }
+    if (audioRef.current && d > 0) {
+        try {
+            audioRef.current.currentTime = percent * d;
+        } catch(err) {
+            console.error("Seek error", err);
+        }
+    }
+  };
+
+  const formatTime = (seconds: number) => {
+      const m = Math.floor(seconds / 60);
+      const s = Math.floor(seconds % 60);
+      return `${m}:${s < 10 ? '0' : ''}${s}`;
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 font-sans text-slate-50 py-10 px-4">
       <div className="max-w-4xl mx-auto space-y-8">
@@ -302,7 +376,16 @@ Hãy đưa ra lời nhận xét ngắn gọn, tích cực dựa trên số liệ
           <h1 className="text-3xl font-bold text-white mt-6">{getGreeting()}, {userName}!</h1>
           <p className="text-slate-400">Bạn vừa hoàn thành bài "{songTitle}" ({songArtist})</p>
           
-          <div className="flex justify-center gap-4 pt-4">
+          <div className="flex justify-center gap-4 pt-4 flex-wrap">
+            {recordingUrl && (
+              <Button 
+                onClick={() => setShowAudioPlayer(true)} 
+                variant="outline" 
+                className="border-violet-500 bg-violet-900/20 hover:bg-violet-900/40 text-violet-300 px-8 rounded-full h-12 text-base shadow-[0_0_15px_rgba(139,92,246,0.15)]"
+              >
+                <Headphones className="w-5 h-5 mr-2" /> Nghe lại phần trình diễn
+              </Button>
+            )}
             <Link to={state?.song?.id ? `/play/${state.song.id}` : "/dashboard"}>
               <Button className="bg-white text-slate-950 hover:bg-slate-200 px-8 rounded-full h-12 text-base font-semibold">
                 <RotateCcw className="w-5 h-5 mr-2" /> Hát lại bài này
@@ -313,6 +396,75 @@ Hãy đưa ra lời nhận xét ngắn gọn, tích cực dựa trên số liệ
             </Button>
           </div>
         </div>
+
+        {/* Audio Player Modal */}
+        {showAudioPlayer && recordingUrl && (
+           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
+              <div className="bg-slate-900 border border-slate-700 rounded-3xl p-6 md:p-8 w-full max-w-lg shadow-2xl relative">
+                  <button onClick={() => setShowAudioPlayer(false)} className="absolute top-4 right-4 text-slate-400 hover:text-white transition-colors bg-slate-800/50 p-2 rounded-full">
+                     <X className="w-5 h-5" />
+                  </button>
+                  <h3 className="text-xl font-bold text-white mb-2 pr-8">{songTitle}</h3>
+                  <p className="text-sm text-slate-400 mb-6">{songArtist} • Thể hiện bởi {userName}</p>
+                  
+                  <audio 
+                    ref={audioRef} 
+                    src={recordingUrl} 
+                    onTimeUpdate={handleAudioTimeUpdate}
+                    onPlay={() => setIsPlayingAudio(true)}
+                    onPause={() => setIsPlayingAudio(false)}
+                    onEnded={() => setIsPlayingAudio(false)}
+                    onLoadedMetadata={handleAudioTimeUpdate}
+                    className="hidden" 
+                  />
+                  
+                  <div className="bg-slate-950 rounded-2xl p-6 border border-slate-800">
+                     {/* Pitch visualization placeholder */}
+                     <div className="h-16 w-full mb-6 relative overflow-hidden flex items-center justify-center opacity-60">
+                        {/* We use a simple synthetic animated wave mapping */}
+                        {Array.from({ length: 40 }).map((_, i) => {
+                           const isActive = (audioCurrentTime / (audioDuration || 1)) > (i / 40);
+                           return (
+                               <div 
+                                  key={i} 
+                                  className={`flex-1 mx-[1px] rounded-full transition-all duration-300 ${isActive ? 'bg-violet-500' : 'bg-slate-700'}`}
+                                  style={{ 
+                                     height: `${Math.max(10, Math.sin(i * 0.5 + audioCurrentTime * 2) * 20 + 25)}px`,
+                                     opacity: isActive ? 1 : 0.3
+                                  }} 
+                               />
+                           )
+                        })}
+                     </div>
+                     
+                     <div className="flex items-center gap-4">
+                        <button 
+                           onClick={togglePlayAudio}
+                           className="w-12 h-12 shrink-0 bg-violet-600 hover:bg-violet-500 text-white rounded-full flex items-center justify-center transition-transform hover:scale-105"
+                        >
+                           {isPlayingAudio ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ml-1" />}
+                        </button>
+                        
+                        <div className="flex-1">
+                           <div 
+                             className="h-3 relative bg-slate-800 rounded-full cursor-pointer hover:h-4 transition-all group overflow-hidden"
+                             onClick={handleSeek}
+                           >
+                              <div 
+                                className="absolute top-0 left-0 h-full bg-gradient-to-r from-violet-600 to-blue-500 rounded-full transition-all duration-100 ease-linear"
+                                style={{ width: `${(audioCurrentTime / (audioDuration || 1)) * 100}%` }}
+                              />
+                           </div>
+                           <div className="flex justify-between text-xs text-slate-400 mt-2 font-mono font-medium">
+                              <span>{formatTime(audioCurrentTime)}</span>
+                              <span>{formatTime(audioDuration)}</span>
+                           </div>
+                        </div>
+                     </div>
+                  </div>
+              </div>
+           </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Detailed breakdown */}
@@ -400,9 +552,28 @@ Hãy đưa ra lời nhận xét ngắn gọn, tích cực dựa trên số liệ
                            </div>
                         ) : (
                            <>
-                              <div className="bg-violet-500/10 border border-violet-500/20 text-violet-200 p-4 rounded-xl text-sm mb-2 text-left">
-                                 <p>Tính năng nhận xét bằng AI dành cho gói Miễn phí bị giới hạn 2 lượt/ngày.</p>
-                                 {profile?.isVip && <p className="mt-1 font-bold text-amber-400">Bạn là VIP, có 20 lượt nhận xét/ngày!</p>}
+                              <div className="bg-violet-500/10 border border-violet-500/20 text-violet-200 p-4 rounded-xl text-sm mb-4 text-left w-full">
+                                 {isCustom ? (
+                                    <div className="flex flex-col gap-2">
+                                       <span className="font-bold text-green-400">Đã kích hoạt AI với API Key cá nhân. Không giới hạn lượt!</span>
+                                    </div>
+                                 ) : (
+                                    <>
+                                       <p>Tính năng nhận xét bằng AI dành cho gói Miễn phí bị giới hạn 2 lượt/ngày.</p>
+                                       {profile?.isVip && <p className="mt-1 font-bold text-amber-400">Bạn là VIP, có 20 lượt nhận xét/ngày!</p>}
+                                    </>
+                                 )}
+                                 
+                                 {(profile?.isVip || isCustom) && (
+                                     <div className="flex items-center justify-between mt-4 pt-4 border-t border-violet-500/20">
+                                        <span className="text-slate-300 font-semibold gap-2 flex items-center">
+                                           Tự động nhận xét sau mỗi bài
+                                        </span>
+                                        <button onClick={toggleAutoEvaluate} className="text-violet-400 hover:text-violet-300 transition-colors bg-slate-900/50 rounded-full">
+                                           {autoEvaluateAi ? <ToggleRight className="w-10 h-10 text-green-400" /> : <ToggleLeft className="w-10 h-10 text-slate-500" />}
+                                        </button>
+                                     </div>
+                                 )}
                               </div>
                               <Button 
                                  onClick={() => handleRequestFeedback(false)}

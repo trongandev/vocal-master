@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { ArrowLeft, Music4, Clock, Network, ScrollText } from 'lucide-react';
 import { Button } from '../../components/ui/button';
+import { auth } from '../../lib/firebase';
 
 function InteractivePiano() {
   const [activeKey, setActiveKey] = useState<string | null>(null);
@@ -82,6 +83,14 @@ function InteractivePiano() {
 
 export default function DashboardTheoryDetail() {
   const { theoryId } = useParams();
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+    // Mark reading theory for daily quest
+    if (auth.currentUser) {
+       localStorage.setItem(`theoryRead_${auth.currentUser.uid}_${new Date().toDateString()}`, 'true');
+    }
+  }, []);
 
   const THEORY_DATA: Record<string, any> = {
     notes: {
