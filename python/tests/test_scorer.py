@@ -19,7 +19,7 @@ def test_cents_off() -> None:
 
 
 def test_pitch_score_uses_cents_tolerance_window() -> None:
-    cfg = Settings(vocal_separation=False, pitch_tolerance_cents=50.0)
+    cfg = Settings(pitch_tolerance_cents=50.0)
     frame_data = [
         {"t": 0.0, "user_hz": 452.9, "ref_hz": 440.0, "cents_off": 50.0},
         {"t": 0.1, "user_hz": 427.5, "ref_hz": 440.0, "cents_off": -50.0},
@@ -36,7 +36,7 @@ def test_reference_pitch_uses_highest_active_note_for_polyphonic_reference() -> 
 
 
 def test_timing_score_uses_melody_notes_for_polyphonic_reference() -> None:
-    cfg = Settings(vocal_separation=False, timing_tolerance_seconds=0.15)
+    cfg = Settings(timing_tolerance_seconds=0.15)
     reference = [NoteEvent(10.0, 48, 0.5), NoteEvent(10.0, 72, 0.5)]
     user = [NoteEvent(0.05, 72, 0.5)]
 
@@ -70,7 +70,7 @@ def test_filter_reference_notes_keeps_vocal_range_and_melody_line() -> None:
 
 
 def test_timing_score_counts_onsets_within_tolerance() -> None:
-    cfg = Settings(vocal_separation=False, timing_tolerance_seconds=0.15)
+    cfg = Settings(timing_tolerance_seconds=0.15)
     reference = [NoteEvent(10.0, 69, 0.5), NoteEvent(11.0, 71, 0.5)]
     user = [NoteEvent(0.05, 69, 0.5), NoteEvent(1.4, 71, 0.5)]
 
@@ -87,7 +87,6 @@ def test_timing_score_counts_onsets_within_tolerance() -> None:
 
 def test_score_performance_weights_breakdown() -> None:
     cfg = Settings(
-        vocal_separation=False,
         sample_rate=16000,
         hop_length=512,
         min_confidence=0.5,

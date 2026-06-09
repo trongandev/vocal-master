@@ -14,7 +14,6 @@ from services.downloader import download_youtube_audio
 from services.melody_filter import extract_melody_notes, melody_filter_metadata
 from services.note_builder import notes_to_float32_bytes
 from services.segment_builder import build_segments
-from services.vocal_separator import maybe_separate_vocals
 
 
 logger = logging.getLogger(__name__)
@@ -163,14 +162,12 @@ def _transcribe_and_store_song(
     duration: float,
     source_name: str | None = None,
 ) -> None:
-    separated_path = maybe_separate_vocals(audio_path, work_dir, settings)
-    filtered_audio_path = apply_voice_bandpass(separated_path, work_dir, settings)
+    filtered_audio_path = apply_voice_bandpass(audio_path, work_dir, settings)
     transcription = transcribe_audio_to_midi_notes(filtered_audio_path, work_dir)
     raw_notes = transcription.notes
     melody_notes = extract_melody_notes(raw_notes, settings)
     notes_bytes = notes_to_float32_bytes(melody_notes)
     segments = build_segments(melody_notes, settings)
-    transcription_audio = "vocals" if separated_path != audio_path else "original"
     metadata: dict[str, object] = {
         "song_id": song_id,
         "duration": round(float(duration), 3),
@@ -178,7 +175,7 @@ def _transcribe_and_store_song(
         "total_notes": len(melody_notes),
         "segments": segments,
         "transcription_engine": "basic_pitch",
-        "transcription_audio": transcription_audio,
+        "transcription_audio": "original",
         "voice_bandpass": {
             "enabled": settings.voice_bandpass,
             "low_hz": settings.voice_bandpass_low_hz,
