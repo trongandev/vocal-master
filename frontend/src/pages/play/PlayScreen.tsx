@@ -81,6 +81,15 @@ export default function PlayScreen() {
   const viewCountIncremented = useRef(false);
 
   const handleFinish = async () => {
+     if (audioRecorderRef.current && audioRecorderRef.current.state !== 'inactive') {
+         audioRecorderRef.current.stop();
+         // Small delay to allow ondataavailable to fire one last time
+         await new Promise(r => setTimeout(r, 100));
+         const mimeType = audioRecorderRef.current.mimeType || 'audio/webm';
+         const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+         recordingBlobUrlRef.current = URL.createObjectURL(audioBlob);
+     }
+
      if (id && song) {
          try {
              await updateDoc(doc(db, 'songs', id), {
@@ -106,7 +115,7 @@ export default function PlayScreen() {
              }
          } catch(e) { console.error(e); }
      }
-     navigate("/results/session-complete", { state: { score, song, duration, hasVoice, rhythmMetrics } });
+     navigate("/results/session-complete", { state: { score, song, duration, hasVoice, rhythmMetrics, recordingUrl: recordingBlobUrlRef.current } });
   };
 
   const [player, setPlayer] = useState<any>(null);
@@ -122,6 +131,10 @@ export default function PlayScreen() {
   const trailingDotsRef = useRef<{time: number, midi: number, color: string}[]>([]);
   const micLevelRef = useRef<HTMLDivElement>(null);
   
+  const audioRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordingBlobUrlRef = useRef<string | null>(null);
+
   // Stats
   const [score, setScore] = useState(0);
   const [correctHits, setCorrectHits] = useState(0);
@@ -216,6 +229,18 @@ export default function PlayScreen() {
     const startAudio = async () => {
       try {
         stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        
+        audioChunksRef.current = [];
+        try {
+            audioRecorderRef.current = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+        } catch (e) {
+            audioRecorderRef.current = new MediaRecorder(stream);
+        }
+        audioRecorderRef.current.ondataavailable = (e) => {
+            if (e.data.size > 0) audioChunksRef.current.push(e.data);
+        };
+        audioRecorderRef.current.start(100);
+
         audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
         analyzer = audioCtx.createAnalyser();
         analyzer.fftSize = 2048;
@@ -526,7 +551,7 @@ export default function PlayScreen() {
      return () => {
         resizeObserver.disconnect();
      };
-  }, []);
+  }, [showReferenceRoll]);
 
   return (
     <div className="h-screen bg-black text-white font-sans overflow-hidden flex flex-col relative select-none">

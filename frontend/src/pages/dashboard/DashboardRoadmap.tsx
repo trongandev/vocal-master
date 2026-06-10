@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Target, Calendar, CheckCircle2, Circle, ChevronDown, Trophy, Wind, Activity, Heart, ArrowRight, PlayCircle } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Link } from 'react-router-dom';
+import { auth, db } from '../../lib/firebase';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 const ROADMAP_DATA = [
   {
@@ -109,6 +111,50 @@ const ROADMAP_DATA = [
 export default function DashboardRoadmap() {
   const [expandedMonth, setExpandedMonth] = useState<number | null>(1);
   const [completedWeeks, setCompletedWeeks] = useState<number[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    const fetchProgress = async () => {
+      if (auth.currentUser) {
+        try {
+          const docRef = doc(db, 'users', auth.currentUser.uid);
+          const docSnap = await getDoc(docRef);
+          if (docSnap.exists() && docSnap.data().completedWeeks) {
+            setCompletedWeeks(docSnap.data().completedWeeks);
+          } else {
+             const localData = localStorage.getItem('roadmap_progress');
+             if (localData) {
+                setCompletedWeeks(JSON.parse(localData));
+             }
+          }
+        } catch (error) {
+          console.error("Error fetching roadmap progress", error);
+        }
+      } else {
+        const localData = localStorage.getItem('roadmap_progress');
+        if (localData) {
+          setCompletedWeeks(JSON.parse(localData));
+        }
+      }
+    };
+    fetchProgress();
+  }, []);
+
+  const saveProgress = async (newCompletedWeeks: number[]) => {
+    setIsSaving(true);
+    setCompletedWeeks(newCompletedWeeks);
+    localStorage.setItem('roadmap_progress', JSON.stringify(newCompletedWeeks));
+    
+    if (auth.currentUser) {
+      try {
+        const docRef = doc(db, 'users', auth.currentUser.uid);
+        await setDoc(docRef, { completedWeeks: newCompletedWeeks }, { merge: true });
+      } catch (error) {
+        console.error("Error saving roadmap progress", error);
+      }
+    }
+    setIsSaving(false);
+  };
 
   const toggleMonth = (month: number) => {
     if (expandedMonth === month) {
@@ -120,11 +166,13 @@ export default function DashboardRoadmap() {
 
   const toggleWeekCompletion = (weekNum: number, e: any) => {
     e.stopPropagation();
+    let newCompletedWeeks;
     if (completedWeeks.includes(weekNum)) {
-      setCompletedWeeks(completedWeeks.filter(w => w !== weekNum));
+      newCompletedWeeks = completedWeeks.filter(w => w !== weekNum);
     } else {
-      setCompletedWeeks([...completedWeeks, weekNum]);
+      newCompletedWeeks = [...completedWeeks, weekNum];
     }
+    saveProgress(newCompletedWeeks);
   };
 
   const progress = Math.round((completedWeeks.length / 12) * 100);

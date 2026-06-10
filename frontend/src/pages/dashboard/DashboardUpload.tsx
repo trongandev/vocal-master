@@ -141,11 +141,11 @@ export default function DashboardUpload() {
     }
     
     if (videoId) {
-       const qByVideoId = query(collection(db, 'songs'), where('youtubeVideoId', '==', videoId));
+       const qByVideoId = query(collection(db, 'songs'), where('status', '==', 'public'), where('youtubeVideoId', '==', videoId));
        const snap = await getDocs(qByVideoId);
        if (!snap.empty) return snap.docs[0].id;
     } else {
-       const qByText = query(collection(db, 'songs'), where('title', '==', result.title), where('artist', '==', result.channel || result.artist));
+       const qByText = query(collection(db, 'songs'), where('status', '==', 'public'), where('title', '==', result.title), where('artist', '==', result.channel || result.artist));
        const snap = await getDocs(qByText);
        if (!snap.empty) return snap.docs[0].id;
     }

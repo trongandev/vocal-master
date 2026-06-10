@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Trophy, 
@@ -21,7 +22,9 @@ import {
   Coffee,
   HelpCircle,
   X,
-  Target
+  Target,
+  Crown,
+  BookOpen
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { db, auth } from '../../lib/firebase';
@@ -68,15 +71,19 @@ const DAILY_QUESTS_LIST = [
   { id: 'q1', title: 'Khởi động hơi thở cùng Thầy Nam', desc: 'Thực hiện bài hát thử/Humming 10 giây tại phòng máy', xp: 80, coins: 25, type: 'warmup' },
   { id: 'q2', title: 'Người săn nhạc', desc: 'Đi chợ & bóc tách AI 1 bài hát bất kỳ từ YouTube', xp: 120, coins: 40, type: 'upload' },
   { id: 'q3', title: 'Uống trà dưỡng giọng', desc: 'Sử dụng một cốc Trà Thảo Mộc để bảo bối thanh đới', xp: 50, coins: 15, type: 'drink' },
-  { id: 'q4', title: 'Học hỏi lý thuyết', desc: 'Đọc chi tiết 1 bài kỹ thuật hoặc lý thuyết thanh nhạc', xp: 70, coins: 20, type: 'theory' }
+  { id: 'q4', title: 'Học hỏi lý thuyết', desc: 'Đọc chi tiết 1 bài kỹ thuật hoặc lý thuyết thanh nhạc', xp: 70, coins: 20, type: 'theory' },
+  { id: 'q5', title: 'Gia Tài Âm Nhạc', desc: 'Thêm 3 bài hát karaoke mới lên hệ thống', xp: 100, coins: 30, type: 'karaoke' }
 ];
 
-const BADGES_LIST = [
+export const BADGES_LIST = [
   { id: 'de-tu-nhap-mon', name: 'Đệ Tử Nhập Môn', icon: Award, desc: 'Bắt đầu hành trình giải phóng âm thanh cùng VocalMaster', color: 'from-blue-600 to-cyan-500' },
   { id: 'la-phoi-thep', name: 'Lá Phổi Thép', icon: Flame, desc: 'Hoàn thành bài tập thở hơi Humming đạt trên 90 điểm', color: 'from-amber-500 to-orange-600' },
   { id: 'chuong-khanh-tieu-so', name: 'Chuông Khánh Tiêu Sơ', icon: Star, desc: 'Đạt nốt cao cộng hưởng hoàn mỹ ổn định', color: 'from-violet-600 to-pink-500' },
   { id: 'ong-gia-cham-chi', name: 'Chiến Binh Bền Bỉ', icon: CheckCircle, desc: 'Đạt chuỗi rèn luyện 7 ngày liên tục', color: 'from-emerald-500 to-teal-600' },
-  { id: 'ca-nhan-tai-ba', name: 'Vua Phòng Thu', icon: Trophy, desc: 'Bóc tách thành công 5 bài hát cá nhân lên thư viện', color: 'from-yellow-500 to-amber-600' }
+  { id: 'ca-nhan-tai-ba', name: 'Vua Phòng Thu', icon: Trophy, desc: 'Bóc tách thành công 5 bài hát cá nhân lên thư viện', color: 'from-yellow-500 to-amber-600' },
+  { id: 'tuyet-dinh-thanh-nhac', name: 'Tuyệt Đỉnh Thanh Nhạc', icon: Sparkles, desc: 'Đạt 5000 XP Kinh nghiệm Thanh nhạc', color: 'from-purple-500 to-indigo-600' },
+  { id: 'quyen-luc-vip', name: 'Đẳng Cấp Thượng Lưu', icon: Crown, desc: 'Trở thành thành viên VIP của khoá học', color: 'from-yellow-400 to-yellow-600' },
+  { id: 'thien-tai-nhac-ly', name: 'Thiên Tài Nhạc Lý', icon: BookOpen, desc: 'Hoàn thành 10 bài học lý thuyết thanh nhạc', color: 'from-emerald-400 to-cyan-600' }
 ];
 
 const SHOP_ITEMS = [
@@ -86,6 +93,7 @@ const SHOP_ITEMS = [
 ];
 
 export default function DashboardQuests() {
+  const navigate = useNavigate();
   const [stats, setStats] = useState<VocalStats>(DEFAULT_STATS);
   const [loading, setLoading] = useState(true);
   const [quoteIdx, setQuoteIdx] = useState(0);
@@ -102,6 +110,7 @@ export default function DashboardQuests() {
   const [gameCountdown, setGameCountdown] = useState(10);
   const [gameScore, setGameScore] = useState(0);
   const [showConfetti, setShowConfetti] = useState(false);
+  const [achievementToast, setAchievementToast] = useState<{ id: string, name: string, desc: string, icon: any, color: string } | null>(null);
   
   // Web Audio Hook-ups
   const [audioStream, setAudioStream] = useState<MediaStream | null>(null);
@@ -111,6 +120,30 @@ export default function DashboardQuests() {
   const animationRef = useRef<number | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const gameIntervalRef = useRef<any>(null);
+
+  const [songsToday, setSongsToday] = useState(0);
+
+  useEffect(() => {
+    if (auth.currentUser) {
+      import('firebase/firestore').then(({ collection, query, where, getDocs }) => {
+         const q = query(collection(db, 'songs'), where('ownerId', '==', auth.currentUser.uid));
+         getDocs(q).then(snap => {
+            let count = 0;
+            const now = new Date();
+            snap.docs.forEach(doc => {
+               const data = doc.data();
+               if (data.createdAt && data.createdAt.toDate) {
+                  const d = data.createdAt.toDate();
+                  if (d.getDate() === now.getDate() && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()) {
+                     count++;
+                  }
+               }
+            });
+            setSongsToday(count);
+         }).catch(console.error);
+      });
+    }
+  }, [auth.currentUser]);
 
   // Load from firebase or fallback
   useEffect(() => {
@@ -160,22 +193,41 @@ export default function DashboardQuests() {
 
   // Save helper
   const saveStats = async (newStats: VocalStats) => {
-    setStats(newStats);
-    localStorage.setItem('vocal_quests_stats', JSON.stringify(newStats));
+    // Check global achievements before saving
+    let finalStats = newStats;
+    if (finalStats.xp >= 5000 && !finalStats.unlockedBadges.includes('tuyet-dinh-thanh-nhac')) {
+       finalStats = unlockAchievement('tuyet-dinh-thanh-nhac', finalStats);
+    }
+    
+    setStats(finalStats);
+    localStorage.setItem('vocal_quests_stats', JSON.stringify(finalStats));
     if (auth.currentUser) {
       try {
-        await setDoc(doc(db, 'vocalStats', auth.currentUser.uid), newStats);
+        await setDoc(doc(db, 'vocalStats', auth.currentUser.uid), finalStats);
       } catch (e) {
         console.error("Lỗi lưu DB:", e);
       }
     }
   };
 
+  const unlockAchievement = (badgeId: string, currentStats: VocalStats) => {
+    if (currentStats.unlockedBadges.includes(badgeId)) return currentStats;
+    const badge = BADGES_LIST.find(b => b.id === badgeId);
+    if (badge) {
+      setAchievementToast(badge);
+      setTimeout(() => setAchievementToast(null), 5000);
+    }
+    return {
+      ...currentStats,
+      unlockedBadges: [...currentStats.unlockedBadges, badgeId]
+    };
+  };
+
   // Add XP and level transition
-  const addRewards = (xpToAdd: number, coinsToAdd: number) => {
-    let newXp = stats.xp + xpToAdd;
-    let newLevel = stats.level;
-    let nextXp = stats.nextXp;
+  const addRewards = (xpToAdd: number, coinsToAdd: number, baseStats: VocalStats = stats) => {
+    let newXp = baseStats.xp + xpToAdd;
+    let newLevel = baseStats.level;
+    let nextXp = baseStats.nextXp;
 
     while (newXp >= nextXp) {
       newXp -= nextXp;
@@ -185,11 +237,11 @@ export default function DashboardQuests() {
     }
 
     const updated = {
-      ...stats,
+      ...baseStats,
       level: newLevel,
       xp: newXp,
       nextXp,
-      coins: stats.coins + coinsToAdd
+      coins: baseStats.coins + coinsToAdd
     };
     saveStats(updated);
   };
@@ -217,18 +269,16 @@ export default function DashboardQuests() {
     const updated: VocalStats = {
       ...stats,
       lastClaimedDate: todayStr,
-      streak: newStreak,
-      coins: stats.coins + chestReward.coins,
-      xp: stats.xp + chestReward.xp
+      streak: newStreak
     };
     
     // Auto-unlock complete warrior badge if 7 consecutive streak
-    if (newStreak >= 7 && !updated.unlockedBadges.includes('ong-gia-cham-chi')) {
-       updated.unlockedBadges.push('ong-gia-cham-chi');
+    let finalUpdated = updated;
+    if (newStreak >= 7) {
+       finalUpdated = unlockAchievement('ong-gia-cham-chi', finalUpdated);
     }
 
-    saveStats(updated);
-    addRewards(chestReward.xp, chestReward.coins);
+    addRewards(chestReward.xp, chestReward.coins, finalUpdated);
   };
 
   // Trigger Complete Quest
@@ -244,8 +294,7 @@ export default function DashboardQuests() {
       completedQuests: newCompleted
     };
 
-    saveStats(updated);
-    addRewards(questObj.xp, questObj.coins);
+    addRewards(questObj.xp, questObj.coins, updated);
     
     // Quick alert
     alert(`🎯 Rực rỡ! Hoàn thành "${questObj.title}"\n+${questObj.xp} XP | +${questObj.coins} Đồng tiền Dưỡng Thanh`);
@@ -424,6 +473,10 @@ export default function DashboardQuests() {
 
   // Launch warmup game
   const handleStartWarmupGame = (type: 'humming' | 'vowel_a' | 'trill') => {
+    if (stats.completedQuests.includes('q1')) {
+      alert("Bạn đã khởi động hơi thở trong hôm nay rồi! Thanh quản cần được nghỉ ngơi, hãy quay lại luyện tập vào ngày mai nhé.");
+      return;
+    }
     setWarmupType(type);
     setIsGameActive(true);
     setGameStep('recording');
@@ -455,29 +508,26 @@ export default function DashboardQuests() {
           const finalScore = Math.min(100, Math.max(70, avgScore));
           setGameScore(finalScore);
 
+          let finalUpdated = { ...stats };
+          
           if (finalScore >= 90) {
              setShowConfetti(true);
              // auto-unlock iron lungs badge if not owned
-             if (!stats.unlockedBadges.includes('la-phoi-thep')) {
-               const updated = {
-                 ...stats,
-                 unlockedBadges: [...stats.unlockedBadges, 'la-phoi-thep']
-               };
-               saveStats(updated);
-             }
+             finalUpdated = unlockAchievement('la-phoi-thep', finalUpdated);
           }
 
           // Automatically complete Daily Quest 1
-          if (!stats.completedQuests.includes('q1')) {
-            const updatedCompleted = [...stats.completedQuests, 'q1'];
-            const updatedWithQuest = {
-               ...stats,
+          if (!finalUpdated.completedQuests.includes('q1')) {
+            const updatedCompleted = [...finalUpdated.completedQuests, 'q1'];
+            finalUpdated = {
+               ...finalUpdated,
                completedQuests: updatedCompleted,
-               coins: stats.coins + 25,
-               xp: stats.xp + 80
+               coins: finalUpdated.coins + 25,
+               xp: finalUpdated.xp + 80
             };
-            saveStats(updatedWithQuest);
           }
+          
+          saveStats(finalUpdated);
 
           return 0;
         }
@@ -622,16 +672,36 @@ export default function DashboardQuests() {
                               <Button 
                                  onClick={() => {
                                     if (q.type === 'warmup') {
-                                       setWarmupType('humming');
-                                       setIsGameActive(true);
-                                       setGameStep('intro');
+                                       const el = document.getElementById('warmup-section');
+                                       if (el) el.scrollIntoView({ behavior: 'smooth' });
+                                    } else if (q.type === 'upload') {
+                                       if (songsToday >= 1) handleCheckQuest(q.id);
+                                       else navigate('/dashboard/upload');
+                                    } else if (q.type === 'karaoke') {
+                                       if (songsToday >= 3) handleCheckQuest(q.id);
+                                       else navigate('/dashboard/upload');
+                                    } else if (q.type === 'theory') {
+                                       const readKey = auth.currentUser ? `theoryRead_${auth.currentUser.uid}_${new Date().toDateString()}` : null;
+                                       if (readKey && localStorage.getItem(readKey)) handleCheckQuest(q.id);
+                                       else navigate('/dashboard/theory');
                                     } else {
                                        handleCheckQuest(q.id);
                                     }
                                  }}
-                                 className="bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold px-4 py-2"
+                                 className="bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold px-4 py-2 flex flex-col gap-0.5 min-w-[90px]"
                               >
-                                 Luyện phát
+                                 <span>
+                                    {q.type === 'drink' ? 'Nhận thưởng' :
+                                      (q.type === 'theory' && auth.currentUser && localStorage.getItem(`theoryRead_${auth.currentUser.uid}_${new Date().toDateString()}`)) ? 'Nhận thưởng' :
+                                      (q.type === 'upload' && songsToday >= 1) ? 'Nhận thưởng' :
+                                      (q.type === 'karaoke' && songsToday >= 3) ? 'Nhận thưởng' :
+                                      'Thực hiện'}
+                                 </span>
+                                 {(q.type === 'upload' || q.type === 'karaoke') && (
+                                   <span className="text-[9px] font-medium text-violet-200">
+                                      {Math.min(songsToday, q.type === 'karaoke' ? 3 : 1)}/{q.type === 'karaoke' ? 3 : 1}
+                                   </span>
+                                 )}
                               </Button>
                            )}
                         </div>
@@ -642,7 +712,7 @@ export default function DashboardQuests() {
            </div>
 
            {/* Interactive Vocal Sound Warm-up Center */}
-           <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl relative overflow-hidden">
+           <div id="warmup-section" className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl relative overflow-hidden">
               <div className="absolute right-0 top-0 bottom-0 w-1/3 bg-radial-gradient from-emerald-500/10 to-transparent pointer-events-none" />
               
               <div className="flex items-center gap-3.5 mb-4">
@@ -1002,6 +1072,30 @@ export default function DashboardQuests() {
                </div>
             </div>
          )}
+      </AnimatePresence>
+
+      {/* Achievement Toast */}
+      <AnimatePresence>
+        {achievementToast && (
+          <motion.div 
+            initial={{ opacity: 0, y: 50, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.9 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-900 border border-slate-700 p-4 rounded-3xl shadow-[0_0_40px_rgba(139,92,246,0.3)] min-w-[320px] max-w-sm flex items-center gap-4"
+          >
+            <div className={`w-12 h-12 shrink-0 rounded-full bg-gradient-to-tr ${achievementToast.color} flex items-center justify-center text-white shadow-inner animate-bounce`}>
+              <achievementToast.icon className="w-6 h-6" />
+            </div>
+            <div className="flex-1 min-w-0 pr-4">
+              <span className="text-[10px] uppercase font-black text-violet-400 tracking-wider">Thành tựu mới!</span>
+              <h4 className="text-white font-bold text-sm truncate leading-tight">{achievementToast.name}</h4>
+              <p className="text-xs text-slate-400 line-clamp-1">{achievementToast.desc}</p>
+            </div>
+            <button onClick={() => setAchievementToast(null)} className="absolute top-2 right-2 text-slate-500 hover:text-white p-1">
+              <X className="w-4 h-4" />
+            </button>
+          </motion.div>
+        )}
       </AnimatePresence>
 
     </div>

@@ -1,15 +1,15 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Link } from 'react-router-dom';
-import { Mic, Square, RefreshCw, AudioLines, Sparkles, CheckCircle2, ChevronRight, Play, Activity, Info, Target, Crown } from 'lucide-react';
+import { Mic, Square, RefreshCw, AudioLines, Sparkles, CheckCircle2, ChevronRight, Play, Activity, Info, Target, Crown, Loader2 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { GoogleGenAI } from "@google/genai";
 import { db, auth } from '../../lib/firebase';
 import { collection, addDoc, serverTimestamp, doc, setDoc, onSnapshot } from 'firebase/firestore';
 import { UpgradeModal } from '../../components/UpgradeModal';
 
-// Initialize Gemini API
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+// Initialize fallback Gemini API
+const defaultAi = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 const NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const MIN_MIDI = 36; // C2
@@ -96,7 +96,7 @@ function autoCorrelate(buf: Float32Array, sampleRate: number) {
 }
 
 export default function DashboardAIEvaluate() {
-  const [testState, setTestState] = useState<'IDLE' | 'RECORDING' | 'ANALYZING' | 'RESULT'>('IDLE');
+  const [testState, setTestState] = useState<'IDLE' | 'RECORDING' | 'ANALYZING' | 'RESULT' | 'CHECKING_KEY'>('IDLE');
   const [recordingTime, setRecordingTime] = useState(0);
   const [analysisResult, setAnalysisResult] = useState<string>('');
   
@@ -112,10 +112,12 @@ export default function DashboardAIEvaluate() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
+  const recordingTimeRef = useRef(0);
   
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyzerRef = useRef<AnalyserNode | null>(null);
   const requestRef = useRef<number>();
+  const maxVolumeRef = useRef<number>(0);
 
   useEffect(() => {
     if (auth.currentUser) {
@@ -143,8 +145,18 @@ export default function DashboardAIEvaluate() {
     }
   };
 
-  const startRecording = async () => {
-    if (!profile?.isVip) {
+  const getCustomGenAI = () => {
+    const customKey = localStorage.getItem('gemini_api_key');
+    if (customKey) {
+      return { ai: new GoogleGenAI({ apiKey: customKey }), customModel: localStorage.getItem('gemini_model') || 'gemini-2.5-flash', isCustom: true };
+    }
+    return { ai: defaultAi, customModel: 'gemini-3.1-pro-preview', isCustom: false };
+  };
+
+  const checkKeyAndStartRecording = async () => {
+    const { isCustom, ai: currentAi, customModel } = getCustomGenAI();
+
+    if (!profile?.isVip && !isCustom) {
        const todayString = new Date().toLocaleDateString();
        const count = profile?.lastEvalDate === todayString ? (profile?.todayEvalsCount || 0) : 0;
        if (count >= 3) {
@@ -153,6 +165,32 @@ export default function DashboardAIEvaluate() {
        }
     }
 
+    if (isCustom) {
+      setTestState('CHECKING_KEY');
+      try {
+        // Quick verification of the API key
+        await currentAi.models.generateContent({
+           model: customModel,
+           contents: "Test API Key"
+        });
+      } catch (err: any) {
+        console.error("API Key Verification failed:", err);
+        setTestState('IDLE');
+        if (err.message?.includes('API key not valid') || err.message?.includes('403')) {
+          alert("API Key không hợp lệ hoặc đã hết hạn/hết lượt. Vui lòng vào Cài đặt để cập nhật API Key mới!");
+        } else if (err.message?.includes('429')) {
+          alert("API Key của bạn đã đạt giới hạn quota (het luot). Vui lòng sử dụng API Key khác!");
+        } else {
+          alert("Lỗi kiểm tra API Key: " + err.message);
+        }
+        return;
+      }
+    }
+
+    startRecording();
+  };
+
+  const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
@@ -168,6 +206,7 @@ export default function DashboardAIEvaluate() {
       };
 
       mediaRecorder.onstop = async () => {
+        if (recordingTimeRef.current < 5) return;
         const audioBlob = new Blob(chunksRef.current, { type: mediaRecorder.mimeType });
         await analyzeAudio(audioBlob, mediaRecorder.mimeType);
       };
@@ -188,6 +227,17 @@ export default function DashboardAIEvaluate() {
 
       const updatePitch = () => {
         analyzer.getFloatTimeDomainData(buffer);
+        
+        // Calculate RMS for volume check
+        let sum = 0;
+        for (let i = 0; i < bufferLength; i++) {
+          sum += buffer[i] * buffer[i];
+        }
+        const rms = Math.sqrt(sum / bufferLength);
+        if (rms > maxVolumeRef.current) {
+          maxVolumeRef.current = rms;
+        }
+
         const ac = autoCorrelate(buffer, audioCtx.sampleRate);
 
         if (ac !== -1) {
@@ -203,29 +253,47 @@ export default function DashboardAIEvaluate() {
         requestRef.current = requestAnimationFrame(updatePitch);
       };
 
+      maxVolumeRef.current = 0;
       updatePitch();
 
       setTestState('RECORDING');
       setRecordingTime(0);
       setMinNote(null);
       setMaxNote(null);
+      recordingTimeRef.current = 0;
       
       timerRef.current = setInterval(() => {
         setRecordingTime(prev => {
-          if (prev >= 60) { // Max 60 seconds
+          const next = prev + 1;
+          recordingTimeRef.current = next;
+          if (next >= 60) { // Max 60 seconds
             stopRecording();
             return 60;
           }
-          return prev + 1;
+          return next;
         });
       }, 1000);
       
     } catch (err) {
       alert("Vui lòng cấp quyền Microphone để sử dụng tính năng này.");
+      setTestState('IDLE');
     }
   };
 
   const stopRecording = () => {
+    if (recordingTimeRef.current < 5) {
+      alert("Vui lòng thu âm ít nhất 5 giây để AI có thể phân tích chính xác.");
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+        mediaRecorderRef.current.stop();
+      }
+      if (requestRef.current) cancelAnimationFrame(requestRef.current);
+      stopMediaTracks();
+      if (timerRef.current) clearInterval(timerRef.current);
+      setTestState('IDLE');
+      setActiveNote(null);
+      return;
+    }
+
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
       mediaRecorderRef.current.stop();
     }
@@ -251,6 +319,12 @@ export default function DashboardAIEvaluate() {
 
   const analyzeAudio = async (audioBlob: Blob, mimeType: string) => {
     try {
+      if (maxVolumeRef.current < 0.02) {
+        setAnalysisResult("Hệ thống không thu được âm thanh rõ ràng hoặc quá im lặng. Vui lòng kiểm tra lại micro và hát thành tiếng lớn hơn rồi thu âm lại.");
+        setTestState('RESULT');
+        return;
+      }
+
       const base64Audio = await blobToBase64(audioBlob);
       
       const vType = minNote !== null && maxNote !== null ? getVocalType(minNote, maxNote) : null;
@@ -268,8 +342,18 @@ export default function DashboardAIEvaluate() {
       
       Trình bày bằng tiếng Việt, mang tính sư phạm, khích lệ người học. Dùng gạch đầu dòng ngắn gọn, rõ ràng. Nếu file âm thanh quá ồn hoặc không phải giọng người, hãy nhắc nhở học viên thu âm lại ở nơi yên tĩnh hơn.`;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3.1-pro-preview",
+      const { ai: currentAi, customModel, isCustom } = getCustomGenAI();
+
+      let modelToUse = customModel;
+      if (!isCustom) {
+        modelToUse = "gemini-3.1-pro-preview";
+      }
+
+      setTestState('RESULT');
+      setAnalysisResult('');
+
+      const responseStream = await currentAi.models.generateContentStream({
+        model: modelToUse,
         contents: {
           parts: [
             { text: promptText },
@@ -283,8 +367,13 @@ export default function DashboardAIEvaluate() {
         }
       });
 
-      setAnalysisResult(response.text || "Không thể phân tích dữ liệu lúc này.");
-      setTestState('RESULT');
+      let fullText = '';
+      for await (const chunk of responseStream) {
+         if (chunk.text) {
+           fullText += chunk.text;
+           setAnalysisResult(fullText);
+         }
+      }
 
       // Auto-save to history if user is logged in
       if (auth.currentUser) {
@@ -297,7 +386,7 @@ export default function DashboardAIEvaluate() {
             minNote: minNote !== null ? getNoteName(minNote) : null,
             maxNote: maxNote !== null ? getNoteName(maxNote) : null,
             vocalType: vType ? vType.name : null,
-            analysisResult: response.text,
+            analysisResult: fullText,
             createdAt: serverTimestamp(),
             score: 0 // Could be parsed from text if needed
           });
@@ -321,9 +410,13 @@ export default function DashboardAIEvaluate() {
           console.error("Error saving evaluation:", saveErr);
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("AI Analysis Error:", error);
-      setAnalysisResult("Đã có lỗi xảy ra kết nối với AI (Vui lòng thử lại sau). " + error);
+      if (error?.message?.includes('API key') || error?.message?.includes('429')) {
+        setAnalysisResult(`Lỗi API Key: ${error.message} (Vui lòng nâng cấp gói hoặc cập nhật lại API Key mới trong Cài đặt).`);
+      } else {
+        setAnalysisResult("Đã có lỗi xảy ra kết nối với AI (Vui lòng thử lại sau). " + error);
+      }
       setTestState('RESULT');
     }
   };
@@ -333,6 +426,8 @@ export default function DashboardAIEvaluate() {
     setRecordingTime(0);
     setAnalysisResult('');
   };
+
+  const isCustomKeyConfigured = !!localStorage.getItem('gemini_api_key');
 
   // Format time (ex: 00:05)
   const formatTime = (secs: number) => {
@@ -350,12 +445,18 @@ export default function DashboardAIEvaluate() {
         <p className="text-slate-400 text-lg max-w-2xl mx-auto">
           Thu âm trực tiếp một đoạn điệp khúc hoặc bài hát bạn yêu thích (tối đa 60 giây). AI sẽ lắng nghe và phân tích cao độ, nhịp điệu và âm sắc như một huấn luyện viên thanh nhạc thực thụ.
         </p>
-        {!profile?.isVip && (
+        
+        {isCustomKeyConfigured ? (
+          <p className="text-blue-400 text-sm mt-3 font-semibold">
+             <CheckCircle2 className="w-4 h-4 inline mr-1 -mt-1"/>
+             Đang sử dụng API Key Cấu hình (Không giới hạn lượt truy cập)
+          </p>
+        ) : !profile?.isVip ? (
            <p className="text-amber-500 text-sm mt-3 font-semibold">
               <Crown className="w-4 h-4 inline mr-1 -mt-1"/>
               Hôm nay bạn đã dùng: {profile?.lastEvalDate === new Date().toLocaleDateString() ? (profile?.todayEvalsCount || 0) : 0}/3 lượt miễn phí
            </p>
-        )}
+        ) : null}
       </div>
 
       <div className="bg-slate-900/50 border border-slate-800 rounded-3xl p-8 backdrop-blur-sm shadow-2xl relative overflow-hidden">
@@ -375,7 +476,7 @@ export default function DashboardAIEvaluate() {
                 exit={{ opacity: 0, scale: 0.95 }}
                 className="flex flex-col items-center w-full"
               >
-                <div className="w-32 h-32 rounded-full bg-slate-800/80 border-4 border-slate-700 flex items-center justify-center mb-8 shadow-2xl relative group cursor-pointer" onClick={startRecording}>
+                <div className="w-32 h-32 rounded-full bg-slate-800/80 border-4 border-slate-700 flex items-center justify-center mb-8 shadow-2xl relative group cursor-pointer" onClick={checkKeyAndStartRecording}>
                   <div className="absolute inset-0 rounded-full bg-violet-500/20 scale-0 group-hover:scale-100 transition-transform duration-300" />
                   <Mic className="w-12 h-12 text-slate-300 group-hover:text-white relative z-10" />
                 </div>
@@ -387,7 +488,7 @@ export default function DashboardAIEvaluate() {
 
                 <Button 
                   size="lg" 
-                  onClick={startRecording}
+                  onClick={checkKeyAndStartRecording}
                   className="bg-violet-600 hover:bg-violet-500 text-white rounded-full font-bold px-8 py-6 h-auto shadow-[0_0_30px_rgba(124,58,237,0.3)] transition-all hover:scale-105"
                 >
                   <Play className="w-5 h-5 mr-2" /> Bắt đầu thu âm
@@ -395,7 +496,32 @@ export default function DashboardAIEvaluate() {
               </motion.div>
             )}
 
+            {/* STAGE: CHECKING KEY */}
+            {testState === 'CHECKING_KEY' && (
+              <motion.div
+                key="stage-checking"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="flex flex-col items-center"
+              >
+                <div className="relative w-24 h-24 flex items-center justify-center mb-6">
+                  <motion.div 
+                    animate={{ rotate: 360 }} 
+                    transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+                    className="absolute inset-0 rounded-full border-4 border-blue-500 border-t-transparent" 
+                  />
+                  <RefreshCw className="w-8 h-8 text-blue-400 animate-pulse" />
+                </div>
+                <h3 className="text-xl font-bold text-white mb-2">Đang kiểm tra API Key...</h3>
+                <p className="text-blue-300 text-center max-w-sm text-sm">
+                  Vui lòng đợi vài giây để hệ thống xác thực mã API Key của bạn.
+                </p>
+              </motion.div>
+            )}
+
             {/* STAGE: RECORDING */}
+
             {testState === 'RECORDING' && (
               <motion.div
                 key="stage-recording"
@@ -506,6 +632,12 @@ export default function DashboardAIEvaluate() {
                 </div>
 
                 <div className="bg-slate-950 border border-slate-800 rounded-2xl p-6 md:p-8 mb-8 prose prose-invert prose-violet max-w-none">
+                  {!analysisResult && (
+                     <div className="flex items-center gap-3 text-violet-400 py-4">
+                        <Loader2 className="w-6 h-6 animate-spin" />
+                        <span className="font-semibold">AI đang soạn nhận xét chuyên môn...</span>
+                     </div>
+                  )}
                   {/* Clean up the markdown from AI for better UI */}
                   {analysisResult.split('\n').map((line, i) => {
                      if (line.startsWith('##')) return <h3 key={i} className="text-xl font-bold text-violet-400 mt-6 mb-3">{line.replace(/##/g, '')}</h3>

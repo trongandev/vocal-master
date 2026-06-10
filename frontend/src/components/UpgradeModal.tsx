@@ -11,7 +11,7 @@ export const PLANS = [
     features: [
       "Tải lên tối đa 10 bài hát / tháng",
       "Đánh giá thanh nhạc cơ bản (Level 1)",
-      "Đánh giá AI: 3 lượt / ngày",
+      "Đánh giá AI: 2 lượt / ngày (Không giới hạn nếu có API Key)",
       "Tham gia Cộng đồng người học",
       "Hiển thị quảng cáo"
     ],
@@ -26,7 +26,7 @@ export const PLANS = [
     desc: "Mở khoá toàn bộ sức mạnh AI để luyện giọng chuyên nghiệp.",
     features: [
       "Tải lên bài hát không giới hạn",
-      "Đánh giá AI chuyên sâu không giới hạn",
+      "Đánh giá AI chuyên sâu không giới hạn (Không cần API Key)",
       "Mở khoá bài tập Khởi động & Khẩu hình",
       "Chế độ hát Private (Riêng tư)",
       "Không quảng cáo",

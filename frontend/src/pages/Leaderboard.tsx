@@ -1,13 +1,18 @@
 import { useState, useEffect } from 'react';
-import { motion } from 'motion/react';
-import { Trophy, Crown, RefreshCw, Clock, Loader2, Award, Calendar, AlertCircle, Sparkles } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import { Trophy, Crown, RefreshCw, Clock, Loader2, Award, Calendar, AlertCircle, Sparkles, X, Star } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { db, auth } from '../lib/firebase';
 import { collection, doc, getDoc, getDocs, setDoc, query, where } from 'firebase/firestore';
 import { MOCK_SONGS, MOCK_LEADERBOARD } from '../data/mockData';
+import { BADGES_LIST } from './dashboard/DashboardQuests';
 
 export default function Leaderboard() {
   const [songs, setSongs] = useState<any[]>([]);
   const [rankings, setRankings] = useState<any[]>([]);
+  const [levelRankings, setLevelRankings] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState<'score' | 'level'>('score');
+  
   const [loading, setLoading] = useState(true);
   const [cacheTime, setCacheTime] = useState<number | null>(null);
   const [isCalculatedRealTime, setIsCalculatedRealTime] = useState(false);
@@ -36,7 +41,7 @@ export default function Leaderboard() {
   useEffect(() => {
     const fetchSongs = async () => {
       try {
-        const querySnapshot = await getDocs(collection(db, 'songs'));
+        const querySnapshot = await getDocs(query(collection(db, 'songs'), where('status', '==', 'public')));
         const dbSongs = querySnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
         setSongs(dbSongs);
       } catch (err) {
@@ -45,6 +50,12 @@ export default function Leaderboard() {
     };
     fetchSongs();
   }, []);
+
+  const navigate = useNavigate();
+
+  const openUserProfile = async (user: any) => {
+    navigate(`/profile/${user.id}`);
+  };
 
   // Compute or load rankings
   const loadRankings = async (forceRefresh = false) => {
@@ -62,6 +73,7 @@ export default function Leaderboard() {
       
       let useCache = false;
       let cachedRankings: any[] = [];
+      let cachedLevelRankings: any[] = [];
       let lastUpdated = 0;
 
       if (!forceRefresh) {
@@ -70,11 +82,12 @@ export default function Leaderboard() {
           if (cacheSnap.exists()) {
             const data = cacheSnap.data();
             cachedRankings = data.rankings || [];
+            cachedLevelRankings = data.levelRankings || [];
             lastUpdated = data.lastUpdated || 0;
             
-            // Cache is fresh for 24 hours (86,400,000 ms)
+            // Cache is fresh for 24 hours
             const oneDayMs = 24 * 60 * 60 * 1000;
-            if (Date.now() - lastUpdated < oneDayMs && cachedRankings.length > 0) {
+            if (Date.now() - lastUpdated < oneDayMs && (cachedRankings.length > 0 || cachedLevelRankings.length > 0)) {
               useCache = true;
             }
           }
@@ -85,27 +98,22 @@ export default function Leaderboard() {
 
       if (useCache) {
         setRankings(cachedRankings);
+        setLevelRankings(cachedLevelRankings);
         setCacheTime(lastUpdated);
         setLoading(false);
         setIsRefreshing(false);
         return;
       }
 
-      // Cache not available or expired, perform calculation across userSongStats
-      console.log("Aggregating scores from userSongStats (heavy logic)...");
-      const statsSnap = await getDocs(collection(db, 'userSongStats'));
-      
-      if (statsSnap.empty) {
-        // If no records in db yet, enter demo mode
-        setRankings(MOCK_LEADERBOARD);
-        setCacheTime(null);
-        setIsDemoMode(true);
-        setLoading(false);
-        setIsRefreshing(false);
-        return;
-      }
+      // 1. Fetch Users
+      const usersSnap = await getDocs(collection(db, 'users'));
+      const usersMap: Record<string, any> = {};
+      usersSnap.docs.forEach(docSnap => {
+        usersMap[docSnap.id] = docSnap.data();
+      });
 
-      // Aggregate maximum scores for each unique user
+      // 2. Fetch Score Rankings
+      const statsSnap = await getDocs(collection(db, 'userSongStats'));
       const userAggregates: { [uid: string]: { userId: string; name: string; avatar: string; score: number } } = {};
       
       statsSnap.docs.forEach(docSnap => {
@@ -114,31 +122,16 @@ export default function Leaderboard() {
         if (!uId) return;
 
         const scoreValue = Number(row.maxScore) || 0;
-        const displayNameVal = row.displayName || "Giọng ca bí ẩn";
-        const photoURLVal = row.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${uId}`;
+        const displayNameVal = usersMap[uId]?.displayName || row.displayName || "Giọng ca bí ẩn";
+        const photoURLVal = usersMap[uId]?.photoURL || row.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${uId}`;
 
         if (!userAggregates[uId]) {
-          userAggregates[uId] = {
-            userId: uId,
-            name: displayNameVal,
-            avatar: photoURLVal,
-            score: 0
-          };
+          userAggregates[uId] = { userId: uId, name: displayNameVal, avatar: photoURLVal, score: 0 };
         }
-        
-        // Cumulative max score for different songs
         userAggregates[uId].score += scoreValue;
-        
-        // Prefer non-default fields
-        if (row.displayName && row.displayName !== "Giọng ca bí ẩn") {
-          userAggregates[uId].name = row.displayName;
-        }
-        if (row.photoURL) {
-          userAggregates[uId].avatar = row.photoURL;
-        }
       });
 
-      const sortedList = Object.values(userAggregates)
+      let sortedList = Object.values(userAggregates)
         .sort((a, b) => b.score - a.score)
         .map((item, index) => ({
           id: item.userId,
@@ -148,15 +141,61 @@ export default function Leaderboard() {
           rank: index + 1
         }));
 
+      // 3. Fetch Level Rankings
+      const vocalStatsSnap = await getDocs(collection(db, 'vocalStats'));
+      const levelAggregates: any[] = [];
+      
+      vocalStatsSnap.docs.forEach(docSnap => {
+        const row = docSnap.data();
+        const uId = docSnap.id;
+        
+        const xpValue = Number(row.xp) || 0;
+        const levelValue = Number(row.level) || 1;
+        const displayNameVal = usersMap[uId]?.displayName || "Giọng ca bí ẩn";
+        const photoURLVal = usersMap[uId]?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${uId}`;
+
+        levelAggregates.push({
+          userId: uId,
+          name: displayNameVal,
+          avatar: photoURLVal,
+          level: levelValue,
+          xp: xpValue,
+          badgesCount: row.unlockedBadges?.length || 0
+        });
+      });
+
+      let sortedLevelList = levelAggregates
+        .sort((a, b) => {
+          if (b.level !== a.level) return b.level - a.level;
+          return b.xp - a.xp;
+        })
+        .map((item, index) => ({
+          id: item.userId,
+          name: item.name,
+          avatar: item.avatar,
+          score: item.xp, // using score field for generic rendering
+          level: item.level,
+          badgesCount: item.badgesCount,
+          rank: index + 1
+        }));
+
+      if (sortedList.length === 0 && sortedLevelList.length === 0) {
+        setIsDemoMode(true);
+        sortedList = MOCK_LEADERBOARD;
+        sortedLevelList = MOCK_LEADERBOARD.map(p => ({...p, score: p.score * 10, level: Math.floor(p.score/100) + 1, badgesCount: 2}));
+      }
+
       setRankings(sortedList);
+      setLevelRankings(sortedLevelList);
+      
       const now = Date.now();
       setCacheTime(now);
 
-      // Update database cache for next 24h
       if (auth.currentUser) {
         try {
           await setDoc(doc(db, 'leaderboardCache', 'global'), {
             rankings: sortedList,
+            levelRankings: sortedLevelList,
             lastUpdated: now
           });
         } catch (writeErr) {
@@ -175,8 +214,8 @@ export default function Leaderboard() {
     loadRankings();
   }, []);
 
-  const allAvailableSongs = songs.length > 0 ? songs : MOCK_SONGS;
-  const displayRankings = rankings.length > 0 ? rankings : (isDemoMode ? MOCK_LEADERBOARD : []);
+  const currentRankingsList = activeTab === 'score' ? rankings : levelRankings;
+  const displayRankings = currentRankingsList.length > 0 ? currentRankingsList : (isDemoMode ? (activeTab === 'score' ? MOCK_LEADERBOARD : MOCK_LEADERBOARD.map(p => ({...p, score: p.score * 10, level: Math.floor(p.score/100) + 1, badgesCount: 2}))) : []);
 
   // Utility to safely retrieve placement or return beautifully formatted placeholder blocks
   const getRankData = (index: number) => {
@@ -214,6 +253,32 @@ export default function Leaderboard() {
         <p className="text-slate-400 text-sm md:text-base max-w-2xl mx-auto">
           Những ngôi sao sáng giá sở hữu tổng điểm cao nhất trên hệ thống VocalMaster.
         </p>
+        
+        {/* Tabs */}
+        <div className="flex justify-center mt-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-full p-1 inline-flex shrink-0">
+            <button
+              onClick={() => setActiveTab('score')}
+              className={`px-6 py-2 rounded-full text-sm font-bold transition-all ${
+                activeTab === 'score' 
+                  ? 'bg-gradient-to-r from-yellow-500 to-amber-500 text-slate-950 shadow-lg' 
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
+              }`}
+            >
+              Điểm Hát
+            </button>
+            <button
+              onClick={() => setActiveTab('level')}
+              className={`px-6 py-2 rounded-full text-sm font-bold transition-all ${
+                activeTab === 'level' 
+                  ? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-slate-950 shadow-lg' 
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
+              }`}
+            >
+              Cấp Độ & XP
+            </button>
+          </div>
+        </div>
 
         {/* Optimised daily cash information & recalculate controller */}
         <div className="flex flex-wrap items-center justify-center gap-3 text-xs text-slate-500 pt-1.5 bg-slate-900/40 border border-slate-800/60 p-2.5 sm:p-3 rounded-2xl max-w-md mx-auto">
@@ -268,7 +333,8 @@ export default function Leaderboard() {
               initial={{ opacity: 0, y: 30 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1, duration: 0.5 }}
-              className="flex flex-col items-center w-1/3 max-w-[150px]"
+              className="flex flex-col items-center w-1/3 max-w-[150px] cursor-pointer hover:scale-105 transition-transform"
+              onClick={() => top2.id && !top2.id.startsWith('empty') && openUserProfile(top2)}
             >
               <div className="relative mb-3 flex flex-col items-center">
                 <div className="w-16 h-16 md:w-20 md:h-20 rounded-full border-4 border-slate-300 bg-slate-800 overflow-hidden shadow-lg relative shrink-0">
@@ -279,7 +345,10 @@ export default function Leaderboard() {
                 </div>
               </div>
               <div className="text-center font-bold text-slate-200 text-xs md:text-sm truncate w-full mt-1.5 px-0.5">{top2.name}</div>
-              <div className="text-slate-400 text-[11px] md:text-xs font-mono font-bold mt-0.5">{top2.score ? `${top2.score.toLocaleString()} pt` : '--'}</div>
+              <div className="flex items-center gap-1.5 mt-1">
+                {activeTab === 'level' && top2.level && <span className="bg-amber-500 text-white text-[10px] font-bold px-1.5 rounded-sm">Lv.{top2.level}</span>}
+                <div className="text-slate-400 text-[11px] md:text-xs font-mono font-bold">{top2.score ? `${top2.score.toLocaleString()} ${activeTab === 'score' ? 'pt' : 'XP'}` : '--'}</div>
+              </div>
               <div className="w-full h-20 md:h-28 bg-slate-800/60 rounded-t-2xl mt-4 border-t-2 border-slate-400/50 relative shadow-inner">
                 <div className="absolute inset-x-0 bottom-4 flex justify-center text-[10px] uppercase tracking-wider font-extrabold text-slate-500">Ag (Bạc)</div>
               </div>
@@ -290,7 +359,8 @@ export default function Leaderboard() {
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               transition={{ duration: 0.6 }}
-              className="flex flex-col items-center w-1/3 max-w-[170px] z-10"
+              className="flex flex-col items-center w-1/3 max-w-[170px] z-10 cursor-pointer hover:scale-105 transition-transform"
+              onClick={() => top1.id && !top1.id.startsWith('empty') && openUserProfile(top1)}
             >
               <Crown className="w-8 h-8 text-yellow-400 drop-shadow-[0_0_10px_rgba(250,204,21,0.5)] animate-bounce" />
               <div className="relative mb-3 flex flex-col items-center">
@@ -302,7 +372,10 @@ export default function Leaderboard() {
                 </div>
               </div>
               <div className="text-center font-black text-yellow-400 text-sm md:text-base truncate w-full mt-1 px-0.5">{top1.name}</div>
-              <div className="text-slate-300 text-xs md:text-sm font-mono font-black mt-0.5">{top1.score ? `${top1.score.toLocaleString()} pt` : '--'}</div>
+              <div className="flex items-center gap-1.5 mt-1 pb-1">
+                {activeTab === 'level' && top1.level && <span className="bg-amber-500 text-white text-[10px] font-bold px-1.5 rounded-sm">Lv.{top1.level}</span>}
+                <div className="text-slate-300 text-xs md:text-sm font-mono font-black">{top1.score ? `${top1.score.toLocaleString()} ${activeTab === 'score' ? 'pt' : 'XP'}` : '--'}</div>
+              </div>
               <div className="w-full h-28 md:h-38 bg-gradient-to-t from-yellow-950/20 to-yellow-600/10 rounded-t-3xl mt-4 border-t-4 border-yellow-500/70 backdrop-blur-sm relative shadow-lg">
                 <div className="absolute inset-x-0 bottom-4 flex justify-center text-[10px] uppercase tracking-wider font-extrabold text-yellow-500/80">Au (Vàng)</div>
               </div>
@@ -313,7 +386,8 @@ export default function Leaderboard() {
               initial={{ opacity: 0, y: 30 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2, duration: 0.5 }}
-              className="flex flex-col items-center w-1/3 max-w-[150px]"
+              className="flex flex-col items-center w-1/3 max-w-[150px] cursor-pointer hover:scale-105 transition-transform"
+              onClick={() => top3.id && !top3.id.startsWith('empty') && openUserProfile(top3)}
             >
               <div className="relative mb-3 flex flex-col items-center">
                 <div className="w-16 h-16 md:w-20 md:h-20 rounded-full border-4 border-amber-700 bg-slate-800 overflow-hidden shadow-lg relative shrink-0">
@@ -324,7 +398,10 @@ export default function Leaderboard() {
                 </div>
               </div>
               <div className="text-center font-bold text-slate-200 text-xs md:text-sm truncate w-full mt-1.5 px-0.5">{top3.name}</div>
-              <div className="text-slate-400 text-[11px] md:text-xs font-mono font-bold mt-0.5">{top3.score ? `${top3.score.toLocaleString()} pt` : '--'}</div>
+              <div className="flex items-center gap-1.5 mt-1">
+                {activeTab === 'level' && top3.level && <span className="bg-amber-500 text-white text-[10px] font-bold px-1.5 rounded-sm">Lv.{top3.level}</span>}
+                <div className="text-slate-400 text-[11px] md:text-xs font-mono font-bold">{top3.score ? `${top3.score.toLocaleString()} ${activeTab === 'score' ? 'pt' : 'XP'}` : '--'}</div>
+              </div>
               <div className="w-full h-16 md:h-22 bg-slate-800/60 rounded-t-2xl mt-4 border-t-2 border-amber-800/60 relative shadow-inner">
                 <div className="absolute inset-x-0 bottom-4 flex justify-center text-[10px] uppercase tracking-wider font-extrabold text-amber-600">Cu (Đồng)</div>
               </div>
@@ -351,7 +428,8 @@ export default function Leaderboard() {
                     initial={{ opacity: 0, y: 10 }}
                     whileInView={{ opacity: 1, y: 0 }}
                     viewport={{ once: true, margin: "-50px" }}
-                    className="flex items-center px-4 sm:px-6 py-4 hover:bg-slate-900/30 transition-all duration-200"
+                    onClick={() => openUserProfile(user)}
+                    className="flex items-center px-4 sm:px-6 py-4 hover:bg-slate-800/60 transition-all duration-200 cursor-pointer"
                   >
                     <div className="w-14 sm:w-20 text-center font-bold text-slate-400 text-sm font-mono">
                       #{user.rank}
@@ -360,12 +438,17 @@ export default function Leaderboard() {
                       <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-slate-900 border border-slate-850 overflow-hidden shrink-0 relative">
                         <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" />
                       </div>
-                      <span className="font-bold text-slate-300 hover:text-white truncate text-sm sm:text-base transition-colors">
-                        {user.name}
-                      </span>
+                      <div className="flex flex-col min-w-0">
+                        <span className="font-bold text-slate-300 hover:text-white truncate text-sm sm:text-base transition-colors">
+                          {user.name}
+                        </span>
+                        {activeTab === 'level' && user.level && (
+                          <span className="text-[10px] text-amber-500 font-bold">Lv.{user.level} • {user.badgesCount} Danh hiệu</span>
+                        )}
+                      </div>
                     </div>
                     <div className="w-24 sm:w-36 text-right font-mono text-xs sm:text-sm font-extrabold text-amber-400">
-                      {user.score?.toLocaleString()} pt
+                      {user.score?.toLocaleString()} {activeTab === 'score' ? 'pt' : 'XP'}
                     </div>
                   </motion.div>
                 ))}
@@ -374,6 +457,7 @@ export default function Leaderboard() {
           )}
         </>
       )}
+
     </div>
   );
 }

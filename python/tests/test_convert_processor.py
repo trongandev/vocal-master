@@ -7,7 +7,7 @@ from services.convert_processor import _transcribe_and_store_song
 from services.note_builder import NoteEvent, notes_from_float32_bytes
 
 
-def test_transcribe_pipeline_uses_original_audio_bandpass_and_caches_melody(
+def test_transcribe_pipeline_uses_original_bandpass_and_caches_melody(
     monkeypatch,
     tmp_path: Path,
 ) -> None:

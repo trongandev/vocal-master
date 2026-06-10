@@ -283,7 +283,11 @@ export default function SongDetail() {
                  <div className="space-y-4">
                    {topScores.length === 0 && <div className="text-slate-500 text-sm">Chưa có ai ghi điểm</div>}
                    {topScores.map((user, idx) => (
-                     <div key={user.id} className="flex items-center gap-4 bg-slate-800/50 p-4 rounded-2xl">
+                     <div 
+                       key={user.id} 
+                       onClick={() => navigate(`/profile/${user.userId}`)}
+                       className="flex items-center gap-4 bg-slate-800/50 p-4 rounded-2xl cursor-pointer hover:bg-slate-800 transition-colors"
+                     >
                        <div className={`w-6 font-bold text-center ${idx === 0 ? 'text-amber-400' : idx === 1 ? 'text-slate-300' : 'text-amber-600'}`}>
                          #{idx + 1}
                        </div>
@@ -308,7 +312,11 @@ export default function SongDetail() {
                  <div className="space-y-4">
                    {topPracticers.length === 0 && <div className="text-slate-500 text-sm">Chưa có ai luyện tập</div>}
                    {topPracticers.map((user, idx) => (
-                     <div key={user.id} className="flex items-center gap-4 bg-slate-800/50 p-4 rounded-2xl">
+                     <div 
+                       key={user.id} 
+                       onClick={() => navigate(`/profile/${user.userId}`)}
+                       className="flex items-center gap-4 bg-slate-800/50 p-4 rounded-2xl cursor-pointer hover:bg-slate-800 transition-colors"
+                     >
                        <div className={`w-6 font-bold text-center ${idx === 0 ? 'text-yellow-400' : idx === 1 ? 'text-slate-300' : 'text-amber-600'}`}>
                          #{idx + 1}
                        </div>
