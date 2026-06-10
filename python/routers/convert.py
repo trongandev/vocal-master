@@ -9,7 +9,7 @@ import uuid
 from collections.abc import AsyncIterator
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, File, Query, Request, UploadFile
+from fastapi import APIRouter, File, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
 
 from cache.memory_store import store
@@ -17,6 +17,7 @@ from errors import invalid_audio, invalid_url, job_not_found, reference_not_foun
 from schemas import ConvertRequest, ConvertResponse, ConvertResultResponse, JobStatusResponse, YouTubeSearchResult
 from services.convert_processor import job_payload, process_convert_file_job, process_convert_job
 from services.downloader import search_youtube
+from services.job_queue import convert_queue
 from services.url_utils import is_youtube_url, song_id_from_url
 
 
@@ -49,7 +50,6 @@ async def search_youtube_videos(
 async def create_convert_job(
     payload: ConvertRequest,
     request: Request,
-    background_tasks: BackgroundTasks,
 ) -> ConvertResponse:
     if not is_youtube_url(payload.url):
         raise invalid_url()
@@ -82,7 +82,11 @@ async def create_convert_job(
         job_id,
         job_payload(job_id, "pending", 0, "queued", song_id=song_id),
     )
-    background_tasks.add_task(process_convert_job, job_id, payload.url, song_id)
+    try:
+        convert_queue.submit(process_convert_job, job_id, payload.url, song_id)
+    except Exception:
+        store.delete_job(job_id)
+        raise
     return ConvertResponse(
         job_id=job_id,
         song_id=song_id,
@@ -96,7 +100,6 @@ async def create_convert_job(
 @router.post("/upload", response_model=ConvertResponse)
 async def create_upload_convert_job(
     request: Request,
-    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
 ) -> ConvertResponse:
     suffix = Path(file.filename or "").suffix.lower()
@@ -132,7 +135,12 @@ async def create_upload_convert_job(
         job_id,
         job_payload(job_id, "pending", 0, "queued", song_id=song_id),
     )
-    background_tasks.add_task(process_convert_file_job, job_id, str(saved_path), song_id, file.filename)
+    try:
+        convert_queue.submit(process_convert_file_job, job_id, str(saved_path), song_id, file.filename)
+    except Exception:
+        saved_path.unlink(missing_ok=True)
+        store.delete_job(job_id)
+        raise
     return ConvertResponse(
         job_id=job_id,
         song_id=song_id,

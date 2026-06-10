@@ -11,6 +11,11 @@ Convert jobs and converted song data are cached in memory inside the running
 FastAPI process. Restarting the server clears all jobs/cache, and multiple
 Uvicorn worker processes will not share cache with each other.
 
+Conversion jobs run through an in-process bounded queue. Use
+`CONVERT_CONCURRENCY` to limit how many heavy audio jobs run at the same time,
+and `MAX_CONVERT_QUEUE_SIZE` to reject excess jobs with `convert_queue_full`.
+For small servers, start with `CONVERT_CONCURRENCY=1`.
+
 Check ffmpeg before calling `/convert`:
 
 ```powershell

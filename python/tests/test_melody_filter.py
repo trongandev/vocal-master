@@ -5,7 +5,6 @@ from services.note_builder import NoteEvent
 
 def test_melody_filter_removes_out_of_range_and_short_notes() -> None:
     cfg = Settings(
-        vocal_separation=False,
         sample_rate=100,
         hop_length=5,
         melody_min_midi=48,
@@ -26,7 +25,6 @@ def test_melody_filter_removes_out_of_range_and_short_notes() -> None:
 
 def test_melody_filter_prefers_continuous_line_over_highest_note() -> None:
     cfg = Settings(
-        vocal_separation=False,
         sample_rate=100,
         hop_length=5,
         melody_min_midi=48,
@@ -46,7 +44,6 @@ def test_melody_filter_prefers_continuous_line_over_highest_note() -> None:
 
 def test_melody_filter_outputs_one_note_per_frame() -> None:
     cfg = Settings(
-        vocal_separation=False,
         sample_rate=100,
         hop_length=5,
         melody_min_midi=48,
@@ -67,7 +64,6 @@ def test_melody_filter_outputs_one_note_per_frame() -> None:
 
 def test_melody_filter_merges_same_pitch_with_short_gap() -> None:
     cfg = Settings(
-        vocal_separation=False,
         sample_rate=100,
         hop_length=5,
         melody_min_midi=48,

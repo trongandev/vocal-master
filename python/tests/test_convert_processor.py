@@ -7,13 +7,12 @@ from services.convert_processor import _transcribe_and_store_song
 from services.note_builder import NoteEvent, notes_from_float32_bytes
 
 
-def test_transcribe_pipeline_uses_vocals_bandpass_and_caches_melody(
+def test_transcribe_pipeline_uses_original_audio_bandpass_and_caches_melody(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
     store.clear()
     cfg = Settings(
-        vocal_separation=True,
         voice_bandpass=True,
         sample_rate=100,
         hop_length=5,
@@ -22,17 +21,10 @@ def test_transcribe_pipeline_uses_vocals_bandpass_and_caches_melody(
         melody_min_note_duration=0.05,
     )
     source = tmp_path / "song.wav"
-    vocals = tmp_path / "vocals.wav"
-    bandpassed = tmp_path / "vocals_voice_bandpass.wav"
+    bandpassed = tmp_path / "song_voice_bandpass.wav"
     source.touch()
-    vocals.touch()
     bandpassed.touch()
     calls: list[tuple[str, Path]] = []
-
-    def fake_separate(audio_path: Path, work_dir: Path, settings: Settings) -> Path:
-        calls.append(("separate", audio_path))
-        assert settings is cfg
-        return vocals
 
     def fake_bandpass(audio_path: Path, work_dir: Path, settings: Settings) -> Path:
         calls.append(("bandpass", audio_path))
@@ -50,7 +42,6 @@ def test_transcribe_pipeline_uses_vocals_bandpass_and_caches_melody(
         )
 
     monkeypatch.setattr("services.convert_processor.settings", cfg)
-    monkeypatch.setattr("services.convert_processor.maybe_separate_vocals", fake_separate)
     monkeypatch.setattr("services.convert_processor.apply_voice_bandpass", fake_bandpass)
     monkeypatch.setattr("services.convert_processor.transcribe_audio_to_midi_notes", fake_transcribe)
 
@@ -65,13 +56,12 @@ def test_transcribe_pipeline_uses_vocals_bandpass_and_caches_melody(
     cached = store.get_song("song-1")
     assert cached is not None
     assert calls == [
-        ("separate", source),
-        ("bandpass", vocals),
+        ("bandpass", source),
         ("transcribe", bandpassed),
     ]
     assert notes_from_float32_bytes(cached.notes_bytes) == [NoteEvent(0.0, 60, 0.5)]
     assert cached.metadata["raw_total_notes"] == 3
     assert cached.metadata["total_notes"] == 1
     assert cached.metadata["segments"] == [{"start": 0.0, "end": 0.5}]
-    assert cached.metadata["transcription_audio"] == "vocals"
+    assert cached.metadata["transcription_audio"] == "original"
     assert cached.metadata["melody_filter"]["mode"] == "voice_bandpass_basic_pitch_one_note_per_frame"

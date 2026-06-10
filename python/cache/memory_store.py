@@ -54,6 +54,10 @@ class InMemoryStore:
                 self._jobs.pop(job_id, None)
             return deleted
 
+    def delete_job(self, job_id: str) -> bool:
+        with self._lock:
+            return self._jobs.pop(job_id, None) is not None
+
     def get_job(self, job_id: str) -> dict[str, Any] | None:
         with self._lock:
             item = self._get_live(self._jobs, job_id)

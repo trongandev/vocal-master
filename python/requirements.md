@@ -231,7 +231,7 @@ Xoá cache thủ công (dùng cho admin hoặc khi cần re-process).
 | MIDI parsing | `pretty_midi` | đọc `.mid` ra note event |
 | Audio processing | `numpy`, `soundfile` | convert sample rate, buffer handling |
 | Cache | in-memory store | TTL 24h, mất dữ liệu khi restart |
-| Job queue | FastAPI `BackgroundTasks` | cho /convert async trong cùng process |
+| Job queue | In-process bounded queue | giới hạn số job /convert chạy đồng thời và từ chối khi queue đầy |
 | Python version | 3.11+ | |
 
 ---

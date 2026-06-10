@@ -19,7 +19,7 @@ def test_hz_midi_conversion() -> None:
 
 
 def test_pitch_frames_group_into_notes() -> None:
-    cfg = Settings(vocal_separation=False, sample_rate=16000, hop_length=512, min_confidence=0.5)
+    cfg = Settings(sample_rate=16000, hop_length=512, min_confidence=0.5)
     frames = [
         PitchFrame(0.000, 440.0, 0.9),
         PitchFrame(0.032, 441.0, 0.9),
@@ -46,7 +46,7 @@ def test_float32_notes_roundtrip() -> None:
 
 
 def test_segments_group_notes_by_gap() -> None:
-    cfg = Settings(vocal_separation=False, segment_gap_seconds=2.0)
+    cfg = Settings(segment_gap_seconds=2.0)
     notes = [
         NoteEvent(1.0, 60, 1.0),
         NoteEvent(3.5, 62, 0.5),

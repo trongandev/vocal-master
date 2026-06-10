@@ -37,7 +37,8 @@ def _get_float(name: str, default: float) -> float:
 class Settings:
     cache_ttl_seconds: int = 86400
     max_video_duration: int = 600
-    vocal_separation: bool = True
+    convert_concurrency: int = 1
+    max_convert_queue_size: int = 20
     pitch_method: str = "pyin"
     score_pitch_weight: float = 0.4
     score_timing_weight: float = 0.3
@@ -66,7 +67,8 @@ class Settings:
         return cls(
             cache_ttl_seconds=_get_int("CACHE_TTL_SECONDS", 86400),
             max_video_duration=_get_int("MAX_VIDEO_DURATION", 600),
-            vocal_separation=_get_bool("VOCAL_SEPARATION", True),
+            convert_concurrency=_get_int("CONVERT_CONCURRENCY", 1),
+            max_convert_queue_size=_get_int("MAX_CONVERT_QUEUE_SIZE", 20),
             pitch_method=os.getenv("PITCH_METHOD", "pyin").strip().lower(),
             score_pitch_weight=_get_float("SCORE_PITCH_WEIGHT", 0.4),
             score_timing_weight=_get_float("SCORE_TIMING_WEIGHT", 0.3),
