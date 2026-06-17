@@ -29,6 +29,14 @@ def transcribe_audio_to_midi_notes(audio_path: str | Path, output_dir: str | Pat
         midi_data.write(str(midi_path))
     except Exception as exc:
         raise transcription_failed(f"Basic Pitch failed: {exc}") from exc
+    finally:
+        try:
+            import tensorflow as tf
+            tf.keras.backend.clear_session()
+        except ImportError:
+            pass
+        import gc
+        gc.collect()
 
     notes = parse_midi_to_notes(midi_path)
     return BasicPitchTranscription(midi_path=midi_path, notes=notes)
