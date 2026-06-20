@@ -10,11 +10,11 @@ import { GoogleGenAI, GenerateContentResponse } from '@google/genai';
 import { UpgradeModal } from '../../components/UpgradeModal';
 import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 
-const defaultAi = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY }); // fallback
+const defaultAi = new GoogleGenAI({ apiKey: (import.meta as any).env.VITE_GEMINI_API_KEY || "dummy_key" }); // fallback
 
 export default function ResultsScreen() {
   const location = useLocation();
-  const state = location.state as { score?: number; song?: any; duration?: number; hasVoice?: boolean; rhythmMetrics?: any, recordingUrl?: string } | null;
+  const state = location.state as { score?: number; song?: any; duration?: number; hasVoice?: boolean; rhythmMetrics?: any, recordingUrl?: string, pitchHistory?: number[] } | null;
   
   const finalScore = state?.score !== undefined ? Math.round(state.score) : 92;
   const songTitle = state?.song?.title || "Unknown Song";
@@ -313,13 +313,78 @@ Hãy đưa ra lời nhận xét ngắn gọn, tích cực dựa trên số liệ
   const [audioCurrentTime, setAudioCurrentTime] = useState(0);
   const [audioDuration, setAudioDuration] = useState(0);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+  const [waveform, setWaveform] = useState<{pitchPercent: number, hasVoice: boolean}[]>(Array(40).fill({pitchPercent: 0, hasVoice: false})); 
+  
+  useEffect(() => {
+    if (!recordingUrl || !state?.pitchHistory) return;
+    try {
+        const history = state.pitchHistory;
+        const bars = 80;
+        const blockSize = Math.max(1, Math.floor(history.length / bars));
+        const newWaveform = [];
+        
+        let minPitch = 127;
+        let maxPitch = 0;
+        for (let i = 0; i < history.length; i++) {
+           if (history[i] > 0) {
+               if (history[i] < minPitch) minPitch = history[i];
+               if (history[i] > maxPitch) maxPitch = history[i];
+           }
+        }
+        const pitchRange = Math.max(12, maxPitch - minPitch); // At least an octave
+        
+        for (let i = 0; i < bars; i++) {
+            let sum = 0;
+            let count = 0;
+            const start = i * blockSize;
+            const end = Math.min(start + blockSize, history.length);
+            for (let j = start; j < end; j++) {
+                if (history[j] > 0) {
+                   sum += history[j];
+                   count++;
+                }
+            }
+            if (count > 0) {
+               const avgPitch = sum / count;
+               // Map pitch to 0-100% for bottom offset
+               const pitchPercent = ((avgPitch - minPitch) / pitchRange) * 80 + 10;
+               newWaveform.push({ pitchPercent, hasVoice: true });
+            } else {
+               newWaveform.push({ pitchPercent: 0, hasVoice: false });
+            }
+        }
+        
+        setWaveform(newWaveform);
+    } catch (err) {
+        console.error("Waveform generating error", err);
+    }
+  }, [recordingUrl, state?.pitchHistory]);
 
   // Auto clean up recording URL on unmount to avoid memory leaks if we want, but since they might go back and forth maybe keep it until app closes.
 
   const togglePlayAudio = () => {
     if (audioRef.current) {
-        if (isPlayingAudio) audioRef.current.pause();
-        else audioRef.current.play();
+        if (audioCurrentTime >= (audioDuration - 0.5) && audioDuration > 0) {
+            audioRef.current.currentTime = 0;
+        }
+        if (isPlayingAudio) {
+            audioRef.current.pause();
+            setIsPlayingAudio(false);
+        } else {
+            const playPromise = audioRef.current.play();
+            if (playPromise !== undefined) {
+               playPromise.catch(e => {
+                   console.error("Playback prevented:", e);
+                   if (audioRef.current && e.name === 'NotSupportedError') {
+                       // Try reloading the media
+                       const currentTime = audioRef.current.currentTime;
+                       audioRef.current.load();
+                       audioRef.current.currentTime = currentTime;
+                       audioRef.current.play().catch(console.error);
+                   }
+               });
+            }
+        }
     }
   };
 
@@ -335,15 +400,15 @@ Hãy đưa ra lời nhận xét ngắn gọn, tích cực dựa trên số liệ
   };
 
   const handleSeek = (e: any) => {
+    e.stopPropagation();
     const rect = e.currentTarget.getBoundingClientRect();
-    const percent = (e.clientX - rect.left) / rect.width;
-    let d = audioRef.current?.duration;
-    if (!isFinite(d) || isNaN(d)) {
-        d = state?.duration || 0;
-    }
+    const percent = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    let d = audioDuration > 0 ? audioDuration : (state?.duration || 0);
+    
     if (audioRef.current && d > 0) {
         try {
             audioRef.current.currentTime = percent * d;
+            setAudioCurrentTime(percent * d); // Optimistic update
         } catch(err) {
             console.error("Seek error", err);
         }
@@ -420,19 +485,31 @@ Hãy đưa ra lời nhận xét ngắn gọn, tích cực dựa trên số liệ
                   
                   <div className="bg-slate-950 rounded-2xl p-6 border border-slate-800">
                      {/* Pitch visualization placeholder */}
-                     <div className="h-16 w-full mb-6 relative overflow-hidden flex items-center justify-center opacity-60">
-                        {/* We use a simple synthetic animated wave mapping */}
-                        {Array.from({ length: 40 }).map((_, i) => {
-                           const isActive = (audioCurrentTime / (audioDuration || 1)) > (i / 40);
+                     <div 
+                        className="h-24 w-full mb-6 relative overflow-hidden flex items-end justify-center opacity-80 cursor-pointer group rounded-xl bg-slate-900 border border-slate-800"
+                        onClick={handleSeek}
+                     >
+                        {/* Playhead indicator */}
+                        <div 
+                          className="absolute top-0 bottom-0 w-px bg-violet-400 z-10 transition-all duration-100 shadow-[0_0_10px_rgba(167,139,250,0.8)]"
+                          style={{ left: `${(audioCurrentTime / (audioDuration || 1)) * 100}%` }}
+                        />
+                        
+                        {waveform.map((bar, i) => {
+                           const isActive = (audioCurrentTime / (audioDuration || 1)) > (i / 80);
                            return (
-                               <div 
-                                  key={i} 
-                                  className={`flex-1 mx-[1px] rounded-full transition-all duration-300 ${isActive ? 'bg-violet-500' : 'bg-slate-700'}`}
-                                  style={{ 
-                                     height: `${Math.max(10, Math.sin(i * 0.5 + audioCurrentTime * 2) * 20 + 25)}px`,
-                                     opacity: isActive ? 1 : 0.3
-                                  }} 
-                               />
+                               <div key={i} className="flex-1 h-full relative border-r border-slate-800/30">
+                                   {bar.hasVoice && (
+                                       <div 
+                                          className={`absolute w-[120%] -left-[10%] rounded-full transition-all duration-300 ${isActive ? 'bg-violet-400 shadow-[0_0_8px_rgba(167,139,250,0.5)]' : 'bg-slate-700'}`}
+                                          style={{ 
+                                             height: '4px',
+                                             bottom: `${bar.pitchPercent}%`,
+                                             opacity: isActive ? 1 : 0.4
+                                          }} 
+                                       />
+                                   )}
+                               </div>
                            )
                         })}
                      </div>

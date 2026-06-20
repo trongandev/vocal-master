@@ -82,10 +82,13 @@ export default function PlayScreen() {
 
   const handleFinish = async () => {
      if (audioRecorderRef.current && audioRecorderRef.current.state !== 'inactive') {
-         audioRecorderRef.current.stop();
-         // Small delay to allow ondataavailable to fire one last time
-         await new Promise(r => setTimeout(r, 100));
-         const mimeType = audioRecorderRef.current.mimeType || 'audio/webm';
+         const recorder = audioRecorderRef.current;
+         const stopPromise = new Promise<void>(resolve => {
+             recorder.addEventListener('stop', () => resolve(), { once: true });
+         });
+         recorder.stop();
+         await stopPromise;
+         const mimeType = recorder.mimeType || 'audio/webm';
          const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
          recordingBlobUrlRef.current = URL.createObjectURL(audioBlob);
      }
@@ -115,7 +118,7 @@ export default function PlayScreen() {
              }
          } catch(e) { console.error(e); }
      }
-     navigate("/results/session-complete", { state: { score, song, duration, hasVoice, rhythmMetrics, recordingUrl: recordingBlobUrlRef.current } });
+     navigate("/results/session-complete", { state: { score, song, duration, hasVoice, rhythmMetrics, recordingUrl: recordingBlobUrlRef.current, pitchHistory: (window as any).currentFullPitchHistory } });
   };
 
   const [player, setPlayer] = useState<any>(null);
@@ -125,7 +128,8 @@ export default function PlayScreen() {
   const [hasVoice, setHasVoice] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [isMicReady, setIsMicReady] = useState(false);
-  const [showReferenceRoll, setShowReferenceRoll] = useState(true);
+  const [showReferenceRoll, setShowReferenceRoll] = useState(false); // start hidden natively
+  const [isAdmin, setIsAdmin] = useState(false);
   
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const trailingDotsRef = useRef<{time: number, midi: number, color: string}[]>([]);
@@ -185,8 +189,14 @@ export default function PlayScreen() {
     };
     loadData();
 
-    const unsubscribe = auth.onAuthStateChanged((user) => {
-       // if we need to do anything else on auth state change
+    const unsubscribe = auth.onAuthStateChanged(async (currentUser) => {
+       if (currentUser) {
+           const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
+           if (userSnap.exists() && userSnap.data().role === 'admin') {
+               setIsAdmin(true);
+               setShowReferenceRoll(true);
+           }
+       }
     });
 
     return () => unsubscribe();
@@ -202,13 +212,19 @@ export default function PlayScreen() {
     else setIsPlaying(false);
   };
 
+  const streamRef = useRef<MediaStream | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const analyzerRef = useRef<AnalyserNode | null>(null);
+
   useEffect(() => {
-    if (!isPlaying || !player) return;
+    if (!isPlaying || !player) {
+        if (audioRecorderRef.current && audioRecorderRef.current.state === 'recording') {
+            audioRecorderRef.current.pause();
+        }
+        return;
+    }
 
     let rafId: number;
-    let audioCtx: AudioContext | null = null;
-    let analyzer: AnalyserNode | null = null;
-    let stream: MediaStream | null = null;
     
     // Using refs for mutable state so we don't have to put them in dependency arrays causing rebuilds
     let accumulatedScore = score;
@@ -219,6 +235,12 @@ export default function PlayScreen() {
     
     // RHYTHM & VIBRATO TRACKING
     let pitchHistory: number[] = [];
+    let fullPitchHistory: number[] = (window as any).currentFullPitchHistory || [];
+    (window as any).currentFullPitchHistory = fullPitchHistory; // Expose to handleFinish
+    // We only reset fullPitchHistory if this is the very first time we start
+    if (!streamRef.current) {
+        fullPitchHistory.length = 0; // reset
+    }
     let vibratoFrames = 0;
     let voiceFrames = 0; // Frames where user is singing
     let activeNoteFrames = 0; // Frames where a note is supposed to be sung
@@ -228,26 +250,33 @@ export default function PlayScreen() {
 
     const startAudio = async () => {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        
-        audioChunksRef.current = [];
-        try {
-            audioRecorderRef.current = new MediaRecorder(stream, { mimeType: 'audio/webm' });
-        } catch (e) {
-            audioRecorderRef.current = new MediaRecorder(stream);
-        }
-        audioRecorderRef.current.ondataavailable = (e) => {
-            if (e.data.size > 0) audioChunksRef.current.push(e.data);
-        };
-        audioRecorderRef.current.start(100);
+        if (!streamRef.current) {
+            streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+            
+            audioChunksRef.current = [];
+            try {
+                audioRecorderRef.current = new MediaRecorder(streamRef.current, { mimeType: 'audio/webm' });
+            } catch (e) {
+                audioRecorderRef.current = new MediaRecorder(streamRef.current);
+            }
+            audioRecorderRef.current.ondataavailable = (e) => {
+                if (e.data.size > 0) audioChunksRef.current.push(e.data);
+            };
+            audioRecorderRef.current.start(100);
 
-        audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-        analyzer = audioCtx.createAnalyser();
-        analyzer.fftSize = 2048;
-        const source = audioCtx.createMediaStreamSource(stream);
-        source.connect(analyzer);
-        setIsMicReady(true);
+            audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+            analyzerRef.current = audioCtxRef.current.createAnalyser();
+            analyzerRef.current.fftSize = 2048;
+            const source = audioCtxRef.current.createMediaStreamSource(streamRef.current);
+            source.connect(analyzerRef.current);
+            setIsMicReady(true);
+        } else {
+            if (audioRecorderRef.current && audioRecorderRef.current.state === 'paused') {
+                audioRecorderRef.current.resume();
+            }
+        }
         
+        const analyzer = analyzerRef.current!;
         const buffer = new Float32Array(analyzer.fftSize);
 
         const loop = () => {
@@ -266,7 +295,7 @@ export default function PlayScreen() {
           const rawTime = player.getCurrentTime();
           const time = rawTime + latencyOffset;
           
-          analyzer!.getFloatTimeDomainData(buffer);
+          analyzer.getFloatTimeDomainData(buffer);
           
           let rms = 0;
           for (let i = 0; i < buffer.length; i++) rms += buffer[i] * buffer[i];
@@ -277,7 +306,7 @@ export default function PlayScreen() {
              micLevelRef.current.style.width = `${level}%`;
           }
 
-          const ac = autoCorrelate(buffer, audioCtx!.sampleRate);
+          const ac = autoCorrelate(buffer, audioCtxRef.current!.sampleRate);
           
           let currentUserMidi: number | null = null;
           let dotColor = '#a855f7'; // fallback color
@@ -297,6 +326,7 @@ export default function PlayScreen() {
           
           if (currentUserMidi !== null && currentUserMidi >= minMidi && currentUserMidi <= maxMidi) {
              voiceFrames++;
+             fullPitchHistory.push(currentUserMidi);
              
              // Track pitch history for vibrato (capture last 20 frames)
              pitchHistory.push(currentUserMidi);
@@ -338,6 +368,7 @@ export default function PlayScreen() {
              trailingDotsRef.current.push({ time, midi: currentUserMidi, color: dotColor });
           } else {
              pitchHistory = []; // Reset pitch history on silence
+             fullPitchHistory.push(-1); // Record silence
           }
 
           // Cleanup old trails
@@ -375,11 +406,17 @@ export default function PlayScreen() {
 
     return () => {
       if (rafId) cancelAnimationFrame(rafId);
-      if (stream) stream.getTracks().forEach(t => t.stop());
-      if (audioCtx) audioCtx.close();
-      setIsMicReady(false);
+      // We don't stop the stream or ctx here, so it persists when paused
     };
   }, [isPlaying, player, latencyOffset]);
+
+  useEffect(() => {
+     // Component unmount cleanup
+     return () => {
+        if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
+        if (audioCtxRef.current) audioCtxRef.current.close().catch(console.error);
+     }
+  }, []);
 
   const drawPianoRoll = (time: number, currentUserMidi: number | null, dotColor: string) => {
       const canvas = canvasRef.current;
@@ -579,9 +616,11 @@ export default function PlayScreen() {
               </div>
            </div>
 
+           {isAdmin && (
            <button onClick={() => setShowReferenceRoll(!showReferenceRoll)} className="p-2 text-slate-400 hover:text-white transition-colors bg-slate-900/50 rounded-full shrink-0" title={showReferenceRoll ? "Ẩn Piano Roll" : "Hiện Piano Roll"}>
              {showReferenceRoll ? <EyeOff className="w-4 h-4 sm:w-5 sm:h-5" /> : <Eye className="w-4 h-4 sm:w-5 sm:h-5" />}
            </button>
+           )}
            <button onClick={() => setShowSettings(true)} className="p-2 text-slate-400 hover:text-white transition-colors bg-slate-900/50 rounded-full shrink-0">
              <Settings2 className="w-4 h-4 sm:w-5 sm:h-5" />
            </button>
@@ -621,6 +660,7 @@ export default function PlayScreen() {
                />
                
                {/* Minimalist Stats Overlay */}
+               {isAdmin && (
                <div className="absolute top-2 left-2 sm:top-4 sm:left-4 flex flex-col gap-2 pointer-events-none scale-75 sm:scale-100 origin-top-left z-10">
                   <div className="bg-black/60 backdrop-blur-md border border-slate-700/50 p-2 sm:p-3 rounded-xl sm:rounded-2xl flex items-center gap-2 sm:gap-4">
                      <div>
@@ -639,8 +679,10 @@ export default function PlayScreen() {
                      </div>
                   </div>
                </div>
+               )}
 
                {/* Current Pitch Display */}
+               {isAdmin && (
                <div className="absolute top-2 right-2 sm:top-4 sm:right-4 bg-black/60 backdrop-blur-md border border-slate-700/50 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl sm:rounded-2xl flex items-center gap-2 sm:gap-3 pointer-events-none scale-75 sm:scale-100 origin-top-right z-10">
                   <Music className="w-3 h-3 sm:w-4 sm:h-4 text-violet-400" />
                   <div>
@@ -648,6 +690,7 @@ export default function PlayScreen() {
                       <div className="text-lg sm:text-xl font-bold text-white tracking-widest text-right">{currentNoteName}</div>
                   </div>
                </div>
+               )}
             </div>
            </div>
          ) : (
