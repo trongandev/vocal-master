@@ -6,8 +6,10 @@ import { auth, db } from '../../lib/firebase';
 import { signOut, updateProfile } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { UpgradeModal } from '../../components/UpgradeModal';
+import { useAlert } from "../../contexts/AlertContext";
 
 export default function DashboardSettings() {
+  const { showAlert } = useAlert();
   const { user } = useAuth();
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [profile, setProfile] = useState<any>(null);
@@ -63,10 +65,10 @@ export default function DashboardSettings() {
       
       // Update local profile state so UI updates
       setProfile((prev: any) => ({ ...prev, displayName, bestVocalType: vocalType }));
-      alert('Đã lưu hồ sơ thành công!');
+      showAlert('Đã lưu hồ sơ thành công!');
     } catch (e) {
       console.error(e);
-      alert('Lỗi lưu hồ sơ!');
+      showAlert('Lỗi lưu hồ sơ!');
     } finally {
       setIsSaving(false);
     }
@@ -79,7 +81,7 @@ export default function DashboardSettings() {
       localStorage.removeItem('gemini_api_key');
     }
     localStorage.setItem('gemini_model', geminiModel);
-    alert('Đã cập nhật cấu hình AI (Gemini API) thành công!');
+    showAlert('Đã cập nhật cấu hình AI (Gemini API) thành công!');
   };
 
   return (

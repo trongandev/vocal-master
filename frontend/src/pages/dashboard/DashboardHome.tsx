@@ -4,6 +4,7 @@ import { Button } from '../../components/ui/button';
 import { Link, useNavigate } from 'react-router-dom';
 import { db, auth } from '../../lib/firebase';
 import { collection, query, where, getDocs, orderBy, deleteDoc, doc, setDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
+import { useAlert } from "../../contexts/AlertContext";
 
 interface Song {
   id: string;
@@ -16,6 +17,7 @@ interface Song {
 }
 
 export default function DashboardHome() {
+  const { showAlert } = useAlert();
   const [mySongs, setMySongs] = useState<Song[]>([]);
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
@@ -117,7 +119,7 @@ export default function DashboardHome() {
       setMySongs(prev => prev.filter(song => song.id !== deletingId));
     } catch (error) {
       console.error("Lỗi xóa bài hát:", error);
-      alert("Có lỗi xảy ra khi xóa bài hát");
+      showAlert("Có lỗi xảy ra khi xóa bài hát");
     } finally {
       setDeletingId(null);
     }

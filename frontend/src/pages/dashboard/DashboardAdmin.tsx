@@ -4,8 +4,10 @@ import { Users, Music, Search, Shield, ShieldAlert, Crown, Trash2, CheckCircle2,
 import { Button } from '../../components/ui/button';
 import { db, auth } from '../../lib/firebase';
 import { collection, query, getDocs, doc, getDoc, setDoc, deleteDoc, orderBy, where } from 'firebase/firestore';
+import { useAlert } from "../../contexts/AlertContext";
 
 export default function DashboardAdmin() {
+  const { showAlert } = useAlert();
   const [activeTab, setActiveTab] = useState<'users' | 'songs' | 'errors'>('users');
   const [users, setUsers] = useState<any[]>([]);
   const [songs, setSongs] = useState<any[]>([]);
@@ -170,11 +172,11 @@ export default function DashboardAdmin() {
           }
         }
       }
-      alert(`Đã cập nhật hồ sơ quãng giọng cho ${updatedCount} bài hát.`);
+      showAlert(`Đã cập nhật hồ sơ quãng giọng cho ${updatedCount} bài hát.`);
       fetchSongs();
     } catch (e) {
       console.error(e);
-      alert('Có lỗi xảy ra khi cập nhật.');
+      showAlert('Có lỗi xảy ra khi cập nhật.');
     } finally {
       setIsUpdatingMetrics(false);
     }

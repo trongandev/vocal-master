@@ -9,10 +9,12 @@ import { Target, Crown, Trophy, Clock } from 'lucide-react';
 import { GoogleGenAI, GenerateContentResponse } from '@google/genai';
 import { UpgradeModal } from '../../components/UpgradeModal';
 import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
+import { useAlert } from "../../contexts/AlertContext";
 
 const defaultAi = new GoogleGenAI({ apiKey: (import.meta as any).env.VITE_GEMINI_API_KEY || "dummy_key" }); // fallback
 
 export default function ResultsScreen() {
+  const { showAlert } = useAlert();
   const location = useLocation();
   const state = location.state as { score?: number; song?: any; duration?: number; hasVoice?: boolean; rhythmMetrics?: any, recordingUrl?: string, pitchHistory?: number[] } | null;
   
@@ -158,7 +160,7 @@ export default function ResultsScreen() {
       
       if (duration < 60 || !hasVoice) {
          if (!isAuto) {
-            alert("Bạn cần hát bài hát trên 1 phút và có thu âm giọng thật để AI có thể nhận xét chính xác!");
+            showAlert("Bạn cần hát bài hát trên 1 phút và có thu âm giọng thật để AI có thể nhận xét chính xác!");
          }
          return;
       }
@@ -176,7 +178,7 @@ export default function ResultsScreen() {
          const todayString = new Date().toLocaleDateString();
          const count = currentProfile?.lastAiFeedbackDate === todayString ? (currentProfile?.todayAiFeedbackCount || 0) : 0;
          if (count >= 20) {
-             alert("Lượt nhận xét VIP hôm nay đã đạt giới hạn (20 lần). Vui lòng quay lại vào ngày mai!");
+             showAlert("Lượt nhận xét VIP hôm nay đã đạt giới hạn (20 lần). Vui lòng quay lại vào ngày mai!");
              return;
          }
       }

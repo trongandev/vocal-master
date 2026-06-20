@@ -29,6 +29,7 @@ import {
 import { Button } from '../../components/ui/button';
 import { db, auth } from '../../lib/firebase';
 import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { useAlert } from "../../contexts/AlertContext";
 
 interface VocalStats {
   level: number;
@@ -93,6 +94,7 @@ const SHOP_ITEMS = [
 ];
 
 export default function DashboardQuests() {
+  const { showAlert } = useAlert();
   const navigate = useNavigate();
   const [stats, setStats] = useState<VocalStats>(DEFAULT_STATS);
   const [loading, setLoading] = useState(true);
@@ -233,7 +235,7 @@ export default function DashboardQuests() {
       newXp -= nextXp;
       newLevel += 1;
       nextXp = Math.floor(nextXp * 1.35);
-      alert(`🎉 CHÚC MỪNG BẠN LÊN CẤP! Bạn đạt Cấp ${newLevel}. Thầy Nam gửi lời ngợi khen sự chăm chỉ của trò!`);
+      showAlert(`🎉 CHÚC MỪNG BẠN LÊN CẤP! Bạn đạt Cấp ${newLevel}. Thầy Nam gửi lời ngợi khen sự chăm chỉ của trò!`);
     }
 
     const updated = {
@@ -249,7 +251,7 @@ export default function DashboardQuests() {
   // Daily box chest claim
   const handleClaimDailyChest = () => {
     if (stats.lastClaimedDate === new Date().toDateString()) {
-      alert("Hôm nay trò đã điểm danh rồi! Hãy quay lại vào ngày mai nhé.");
+      showAlert("Hôm nay trò đã điểm danh rồi! Hãy quay lại vào ngày mai nhé.");
       return;
     }
 
@@ -297,13 +299,13 @@ export default function DashboardQuests() {
     addRewards(questObj.xp, questObj.coins, updated);
     
     // Quick alert
-    alert(`🎯 Rực rỡ! Hoàn thành "${questObj.title}"\n+${questObj.xp} XP | +${questObj.coins} Đồng tiền Dưỡng Thanh`);
+    showAlert(`🎯 Rực rỡ! Hoàn thành "${questObj.title}"\n+${questObj.xp} XP | +${questObj.coins} Đồng tiền Dưỡng Thanh`);
   };
 
   // Shop Buy Item
   const handleBuyItem = (item: typeof SHOP_ITEMS[0]) => {
     if (stats.coins < item.price) {
-      alert("Trò chưa tích đủ Đồng Tiền Dưỡng Thanh rồi! Hãy siêng năng rèn luyện mỗi ngày để kiếm thêm đồng xu nhé.");
+      showAlert("Trò chưa tích đủ Đồng Tiền Dưỡng Thanh rồi! Hãy siêng năng rèn luyện mỗi ngày để kiếm thêm đồng xu nhé.");
       return;
     }
 
@@ -328,7 +330,7 @@ export default function DashboardQuests() {
     }
 
     saveStats(updated);
-    alert(`🍵 Đã pha chế thành công: ${item.name}!\nChi phí: -${item.price} Đồng Tiền Dưỡng Thanh. Hiệu ứng đã được sử dụng trực tiếp.`);
+    showAlert(`🍵 Đã pha chế thành công: ${item.name}!\nChi phí: -${item.price} Đồng Tiền Dưỡng Thanh. Hiệu ứng đã được sử dụng trực tiếp.`);
   };
 
   // Live microphone capture and canvas setup
@@ -474,7 +476,7 @@ export default function DashboardQuests() {
   // Launch warmup game
   const handleStartWarmupGame = (type: 'humming' | 'vowel_a' | 'trill') => {
     if (stats.completedQuests.includes('q1')) {
-      alert("Bạn đã khởi động hơi thở trong hôm nay rồi! Thanh quản cần được nghỉ ngơi, hãy quay lại luyện tập vào ngày mai nhé.");
+      showAlert("Bạn đã khởi động hơi thở trong hôm nay rồi! Thanh quản cần được nghỉ ngơi, hãy quay lại luyện tập vào ngày mai nhé.");
       return;
     }
     setWarmupType(type);

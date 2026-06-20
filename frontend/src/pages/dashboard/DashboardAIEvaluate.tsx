@@ -7,6 +7,7 @@ import { GoogleGenAI } from "@google/genai";
 import { db, auth } from '../../lib/firebase';
 import { collection, addDoc, serverTimestamp, doc, setDoc, onSnapshot } from 'firebase/firestore';
 import { UpgradeModal } from '../../components/UpgradeModal';
+import { useAlert } from "../../contexts/AlertContext";
 
 // Initialize fallback Gemini API
 const defaultAi = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -96,6 +97,7 @@ function autoCorrelate(buf: Float32Array, sampleRate: number) {
 }
 
 export default function DashboardAIEvaluate() {
+  const { showAlert } = useAlert();
   const [testState, setTestState] = useState<'IDLE' | 'RECORDING' | 'ANALYZING' | 'RESULT' | 'CHECKING_KEY'>('IDLE');
   const [recordingTime, setRecordingTime] = useState(0);
   const [analysisResult, setAnalysisResult] = useState<string>('');
@@ -177,11 +179,11 @@ export default function DashboardAIEvaluate() {
         console.error("API Key Verification failed:", err);
         setTestState('IDLE');
         if (err.message?.includes('API key not valid') || err.message?.includes('403')) {
-          alert("API Key không hợp lệ hoặc đã hết hạn/hết lượt. Vui lòng vào Cài đặt để cập nhật API Key mới!");
+          showAlert("API Key không hợp lệ hoặc đã hết hạn/hết lượt. Vui lòng vào Cài đặt để cập nhật API Key mới!");
         } else if (err.message?.includes('429')) {
-          alert("API Key của bạn đã đạt giới hạn quota (het luot). Vui lòng sử dụng API Key khác!");
+          showAlert("API Key của bạn đã đạt giới hạn quota (het luot). Vui lòng sử dụng API Key khác!");
         } else {
-          alert("Lỗi kiểm tra API Key: " + err.message);
+          showAlert("Lỗi kiểm tra API Key: " + err.message);
         }
         return;
       }
@@ -275,14 +277,14 @@ export default function DashboardAIEvaluate() {
       }, 1000);
       
     } catch (err) {
-      alert("Vui lòng cấp quyền Microphone để sử dụng tính năng này.");
+      showAlert("Vui lòng cấp quyền Microphone để sử dụng tính năng này.");
       setTestState('IDLE');
     }
   };
 
   const stopRecording = () => {
     if (recordingTimeRef.current < 5) {
-      alert("Vui lòng thu âm ít nhất 5 giây để AI có thể phân tích chính xác.");
+      showAlert("Vui lòng thu âm ít nhất 5 giây để AI có thể phân tích chính xác.");
       if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
         mediaRecorderRef.current.stop();
       }

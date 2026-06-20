@@ -36,6 +36,7 @@ import ResultsScreen from './pages/results/ResultsScreen';
 import ProfileScreen from './pages/profile/ProfileScreen';
 
 import { AuthProvider } from './contexts/AuthContext';
+import { AlertProvider } from './contexts/AlertContext';
 
 import VocalRangeTest from './pages/VocalRangeTest';
 
@@ -66,8 +67,9 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      <AuthProvider>
-        <BrowserRouter>
+      <AlertProvider>
+        <AuthProvider>
+          <BrowserRouter>
           <Routes>
             {/* Phase 1: Public Routes */}
             <Route path="/" element={<PublicLayout />}>
@@ -107,9 +109,9 @@ export default function App() {
         <Route path="/results/:sessionId" element={<ResultsScreen />} />
         <Route path="/profile/:userId" element={<ProfileScreen />} />
         </Routes>
-      </BrowserRouter>
-    </AuthProvider>
+        </BrowserRouter>
+        </AuthProvider>
+      </AlertProvider>
     </ErrorBoundary>
   );
 }
-

@@ -6,6 +6,7 @@ import { GoogleGenAI } from "@google/genai";
 import { auth, db } from '../../lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { UpgradeModal } from '../../components/UpgradeModal';
+import { useAlert } from "../../contexts/AlertContext";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -73,6 +74,7 @@ const EXERCISES = [
 ];
 
 export default function DashboardPronunciation() {
+  const { showAlert } = useAlert();
   const [exercisesList, setExercisesList] = useState(EXERCISES);
   const [selectedEx, setSelectedEx] = useState(EXERCISES[0]);
   const [testState, setTestState] = useState<'IDLE' | 'RECORDING' | 'ANALYZING' | 'RESULT'>('IDLE');
@@ -128,7 +130,7 @@ export default function DashboardPronunciation() {
       }, 1000);
       
     } catch (err) {
-      alert("Vui lòng cấp quyền Microphone để sử dụng tính năng này.");
+      showAlert("Vui lòng cấp quyền Microphone để sử dụng tính năng này.");
     }
   };
 
@@ -190,7 +192,7 @@ Quan trọng: Tách câu lyric thành các từ (từ đơn hoặc ghép), đặ
       resetTest();
     } catch (error) {
       console.error(error);
-      alert("Có lỗi xảy ra khi tạo bài tập từ AI, vui lòng thử lại.");
+      showAlert("Có lỗi xảy ra khi tạo bài tập từ AI, vui lòng thử lại.");
     } finally {
       setIsGenerating(false);
     }

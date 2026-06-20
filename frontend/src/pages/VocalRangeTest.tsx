@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Mic, Play, Info, Check, X, AlertTriangle, Activity } from 'lucide-react';
 import { Button } from '../components/ui/button';
+import { useAlert } from "../contexts/AlertContext";
 
 const NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const MIN_MIDI = 36; // C2
@@ -93,6 +94,7 @@ function autoCorrelate(buf: Float32Array, sampleRate: number) {
 }
 
 export default function VocalRangeTest() {
+  const { showAlert } = useAlert();
   const [showWarnModal, setShowWarnModal] = useState(true);
   const [isTesting, setIsTesting] = useState(false);
   const [testCompleted, setTestCompleted] = useState(false);
@@ -160,7 +162,7 @@ export default function VocalRangeTest() {
 
     } catch (err) {
       console.error("Error accessing microphone:", err);
-      alert("Không thể truy cập Microphone. Vui lòng cấp quyền.");
+      showAlert("Không thể truy cập Microphone. Vui lòng cấp quyền.");
     }
   };
 
