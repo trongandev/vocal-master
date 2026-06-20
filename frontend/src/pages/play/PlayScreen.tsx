@@ -280,7 +280,7 @@ export default function PlayScreen() {
         const buffer = new Float32Array(analyzer.fftSize);
 
         const loop = () => {
-          if (!player || !canvasRef.current || player.getPlayerState() !== 1) {
+          if (!player || player.getPlayerState() !== 1) {
              lastTime = performance.now(); // keep it fresh
              rafId = requestAnimationFrame(loop);
              return;
