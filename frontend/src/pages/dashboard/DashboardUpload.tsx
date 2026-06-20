@@ -69,7 +69,18 @@ export default function DashboardUpload() {
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
   // Cart state for "đi chợ"
-  const [cart, setCart] = useState<any[]>([]);
+  const [cart, setCart] = useState<any[]>(() => {
+    try {
+      const saved = localStorage.getItem("vocal_cart");
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem("vocal_cart", JSON.stringify(cart));
+  }, [cart]);
   const [isHoveredCart, setIsHoveredCart] = useState(false);
   const [flyAnimations, setFlyAnimations] = useState<any[]>([]);
   const cartButtonRef = useRef<HTMLButtonElement>(null);
