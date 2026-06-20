@@ -78,9 +78,11 @@ async def create_convert_job(
             result_url=_result_url(request, job_id),
         )
 
+    queue_pos = convert_queue.queue_size
+    step_val = f"queued:{queue_pos}" if queue_pos > 0 else "queued"
     store.set_job(
         job_id,
-        job_payload(job_id, "pending", 0, "queued", song_id=song_id),
+        job_payload(job_id, "pending", 0, step_val, song_id=song_id),
     )
     try:
         convert_queue.submit(process_convert_job, job_id, payload.url, song_id)
@@ -131,9 +133,11 @@ async def create_upload_convert_job(
             result_url=_result_url(request, job_id),
         )
 
+    queue_pos = convert_queue.queue_size
+    step_val = f"queued:{queue_pos}" if queue_pos > 0 else "queued"
     store.set_job(
         job_id,
-        job_payload(job_id, "pending", 0, "queued", song_id=song_id),
+        job_payload(job_id, "pending", 0, step_val, song_id=song_id),
     )
     try:
         convert_queue.submit(process_convert_file_job, job_id, str(saved_path), song_id, file.filename)

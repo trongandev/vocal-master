@@ -766,7 +766,13 @@ export default function DashboardUpload() {
             </h3>
             <p className="text-violet-400 font-mono tracking-widest uppercase text-sm mb-2 flex items-center gap-2">
               <Activity className="w-4 h-4 animate-pulse" />{" "}
-              {convertStep.replace(/_/g, " ")}
+              {convertStep.startsWith("queued") ? (
+                convertStep.includes(":") 
+                  ? `Đang trong hàng đợi (Vị trí: ${convertStep.split(":")[1]}). Vui lòng chờ...` 
+                  : "Đang trong hàng đợi, vui lòng chờ người trước hoàn thành..."
+              ) : (
+                convertStep.replace(/_/g, " ")
+              )}
             </p>
             <p className="text-slate-500 text-sm mb-6 flex items-center gap-2">
               <Clock className="w-4 h-4" /> Có thể mất từ 30s ~ 40s mỗi bài hát

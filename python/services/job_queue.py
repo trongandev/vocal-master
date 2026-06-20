@@ -31,6 +31,11 @@ class ConvertQueue:
                 )
             self._submitted += 1
 
+    @property
+    def queue_size(self) -> int:
+        with self._lock:
+            return max(0, self._submitted - 1)
+
         future = self._executor.submit(func, *args)
         future.add_done_callback(self._on_done)
 
